@@ -176,24 +176,39 @@ def check_abv(expected: str | None, found: str | None) -> dict:
 
 
 # net contents
+#
+# Volume parsing is the one piece that has to be exact — it's arithmetic, not
+# judgment, so it stays fully deterministic (no model in this path). Every unit
+# a TTB beverage label might state maps to a canonical millilitre factor; the
+# key is the unit lowercased with spaces/dots removed and a trailing "s"
+# stripped, so "FL. OZ.", "fl oz", and "fluid ounces" all land on "floz".
 
-_VOLUME = re.compile(
-    r"(\d+(?:\.\d+)?)\s*"
-    r"(fl\.?\s*oz\.?|milliliters?|millilitres?|centiliters?|centilitres?"
-    r"|liters?|litres?|quarts?|qts?\.?|gallons?|gals?\.?|m\s?l|cl|oz\.?|l\b)",
-    re.IGNORECASE,
-)
-
-_TO_ML = {
-    "ml": 1.0, "milliliter": 1.0, "millilitre": 1.0,
+_UNIT_ML = {
+    "ml": 1.0, "milliliter": 1.0, "millilitre": 1.0, "cc": 1.0,
     "cl": 10.0, "centiliter": 10.0, "centilitre": 10.0,
+    "dl": 100.0, "deciliter": 100.0, "decilitre": 100.0,
     "l": 1000.0, "liter": 1000.0, "litre": 1000.0,
-    "floz": 29.5735, "oz": 29.5735,
-    "quart": 946.353, "qt": 946.353,
-    "gallon": 3785.412, "gal": 3785.412,
+    "floz": 29.5735, "fluidounce": 29.5735, "oz": 29.5735, "ounce": 29.5735,
+    "pt": 473.176, "pint": 473.176,
+    "qt": 946.353, "quart": 946.353,
+    "gal": 3785.412, "gallon": 3785.412,
 }
 
-# beer loves compound imperial quantities like "1 PT. 0.9 FL. OZ."
+# a number ("750", "1,750", "1.75", ".75") followed by any of those units.
+# word forms come before abbreviations, and bare "l" is last so "ml"/"cl"/"dl"
+# match their own alternative first.
+_VOL_NUM = r"(\d[\d,]*(?:\.\d+)?|\.\d+)"
+_UNIT = (
+    r"fl\.?\s*oz\.?|fluid\s*ounces?"
+    r"|milliliters?|millilitres?|centiliters?|centilitres?"
+    r"|deciliters?|decilitres?|liters?|litres?"
+    r"|pints?|pts?\.?|quarts?|qts?\.?|gallons?|gals?\.?|ounces?"
+    r"|m\s?l|cc|cl|dl|oz\.?|l\b"
+)
+_QTY = re.compile(_VOL_NUM + r"\s*(" + _UNIT + r")", re.IGNORECASE)
+
+# beer states compound imperial quantities like "1 PT. 0.9 FL. OZ." — a sum,
+# handled before the general case so the parts add instead of the first winning.
 _PINT_COMPOUND = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:pts?|pints?)\b\.?[\s,]*"
     r"(?:(\d+(?:\.\d+)?)\s*fl\.?\s*oz\.?)?",
@@ -201,18 +216,23 @@ _PINT_COMPOUND = re.compile(
 )
 
 
+def _to_float(num: str) -> float:
+    return float(num.replace(",", ""))
+
+
 def parse_volume_ml(text: str | None) -> float | None:
+    """Read a net-contents string as millilitres, or None if it isn't a volume."""
     if not text:
         return None
     if m := _PINT_COMPOUND.search(text):
-        return float(m.group(1)) * 473.176 + float(m.group(2) or 0) * 29.5735
-    m = _VOLUME.search(text)
-    if not m:
-        return None
-    qty = float(m.group(1))
-    unit = re.sub(r"[\s.]", "", m.group(2)).lower().rstrip("s")
-    factor = _TO_ML.get(unit)
-    return qty * factor if factor else None
+        return _to_float(m.group(1)) * 473.176 + float(m.group(2) or 0) * 29.5735
+    # The first quantity+unit wins. A label that restates one volume two ways —
+    # "750 mL (25.4 FL OZ)" — should read as the principal value, not the sum.
+    if m := _QTY.search(text):
+        unit = re.sub(r"[\s.]", "", m.group(2)).lower().rstrip("s")
+        factor = _UNIT_ML.get(unit)
+        return _to_float(m.group(1)) * factor if factor else None
+    return None
 
 
 def check_net_contents(expected: str | None, found: str | None) -> dict:

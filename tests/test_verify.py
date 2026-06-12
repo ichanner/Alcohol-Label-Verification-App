@@ -161,6 +161,70 @@ def test_volume_quart_and_gallon():
     assert abs(verify.parse_volume_ml("1 gal.") - 3785.412) < 0.01
 
 
+def test_volume_spelled_out_ounces():
+    # the word "ounces", not just "oz" — 23.6698 ounces is exactly 700 mL
+    assert abs(verify.parse_volume_ml("23.6698 ounces") - 700.0) < 0.1
+    assert abs(verify.parse_volume_ml("12 fluid ounces") - 354.882) < 0.1
+    assert verify.check_net_contents("23.6698 ounces", "70 cl")["status"] == MATCH
+
+
+# A comprehensive matrix — every unit spelling/abbreviation maps to the right
+# millilitre value, across number formats. This is the "bulletproof" contract
+# for the deterministic converter.
+VOLUME_MATRIX = [
+    # millilitre
+    ("750 mL", 750), ("750ml", 750), ("750 ML", 750), ("750 milliliters", 750),
+    ("750 millilitres", 750), ("750 cc", 750), ("1,750 mL", 1750),
+    # centilitre
+    ("70 cl", 700), ("70cL", 700), ("70 centiliters", 700), ("70 centilitres", 700),
+    # decilitre
+    ("7 dl", 700), ("7 deciliters", 700),
+    # litre
+    ("1 L", 1000), ("1l", 1000), ("1 liter", 1000), ("1 litre", 1000),
+    ("1.75 L", 1750), ("0.75 L", 750), (".75 L", 750), ("1.5 liters", 1500),
+    # fluid ounce / ounce
+    ("12 fl oz", 354.882), ("12 fl. oz.", 354.882), ("12 fluid ounces", 354.882),
+    ("12 oz", 354.882), ("12 ounces", 354.882), ("1 ounce", 29.5735),
+    # pint / quart / gallon
+    ("1 pint", 473.176), ("1 pt", 473.176), ("1 pt.", 473.176),
+    ("1 quart", 946.353), ("1 qt", 946.353),
+    ("1 gallon", 3785.412), ("1 gal", 3785.412), ("1 gal.", 3785.412),
+    # compound, and a label restating one volume two ways (principal wins)
+    ("1 PINT 0.9 FL. OZ.", 499.79), ("750 mL (25.4 FL OZ)", 750),
+    # not a volume
+    ("smooth and mellow", None), ("", None),
+]
+
+
+def test_volume_matrix():
+    for text, expected in VOLUME_MATRIX:
+        got = verify.parse_volume_ml(text)
+        if expected is None:
+            assert got is None, f"{text!r} should not parse, got {got}"
+        else:
+            assert got is not None and abs(got - expected) < 0.5, \
+                f"{text!r} -> {got}, expected {expected}"
+
+
+def test_volume_equivalences_all_match():
+    # every pair below is the SAME volume written differently — all must match
+    same = [
+        ("750 mL", "75 cL"), ("750 mL", "0.75 L"), ("750 mL", "7.5 dl"),
+        ("750 mL", "25.36 fl oz"), ("700 mL", "23.6698 ounces"),
+        ("1 L", "1000 mL"), ("1.75 L", "1750 mL"), ("1 quart", "946.353 mL"),
+        ("1 pint", "16 fl oz"), ("1 gallon", "3785.412 mL"),
+    ]
+    for a, b in same:
+        assert verify.check_net_contents(a, b)["status"] == MATCH, (a, b)
+
+
+def test_volume_near_sizes_still_distinct():
+    # adjacent real bottle sizes must NOT be folded together
+    for a, b in [("750 mL", "720 mL"), ("700 mL", "750 mL"),
+                 ("1 pint", "1 quart"), ("375 mL", "350 mL")]:
+        assert verify.check_net_contents(a, b)["status"] == MISMATCH, (a, b)
+
+
 def test_net_contents_same_volume_different_unit():
     r = verify.check_net_contents("750 mL", "75 cL")
     assert r["status"] == MATCH
