@@ -11,7 +11,7 @@ so an agent can always see *why* something was flagged. Results come back in a
 few seconds per label, and there's a batch mode for the 200-application dumps
 that show up in peak season.
 
-**Deployed prototype:** _add your URL here after deploying — see below_
+**Deployed prototype:** https://alcohol-label-verification-app-scg8.onrender.com
 
 ## Running it locally
 
