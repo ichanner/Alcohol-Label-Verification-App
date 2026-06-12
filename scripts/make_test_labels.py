@@ -1,11 +1,11 @@
-"""Generates the sample labels in samples/.
+"""Makes the sample labels in samples/.
 
-We don't have real COLA artwork to bundle, so these are synthetic labels drawn
-with Pillow: one clean label plus variants showing the things agents actually
-reject — wrong ABV, a title-case government warning, a missing warning — and
-one photographed-badly version (skewed and blurry) for the image-quality path.
+No real COLA artwork to bundle, so these are drawn with Pillow. One clean
+label, then variants with the stuff agents actually reject (wrong ABV,
+title-case warning, missing warning), plus a skewed blurry one for the
+bad-photo path.
 
-Run from the repo root:  python scripts/make_test_labels.py
+Run from the repo root: python scripts/make_test_labels.py
 """
 
 import sys
@@ -23,8 +23,8 @@ W, H = 880, 1100
 CREAM = (246, 240, 226)
 INK = (32, 28, 24)
 
-# Font lookup, macOS first then common Linux paths. Pillow's built-in bitmap
-# font is the last resort — ugly, but the script still runs.
+# font lookup, macOS paths first then the usual Linux ones. Pillow's
+# built-in bitmap font is the last resort, ugly but the script still runs
 FONTS = {
     "serif": [
         "/System/Library/Fonts/Supplemental/Georgia.ttf",
