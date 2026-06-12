@@ -54,9 +54,17 @@ def check(found: str | None, prefix_bold: bool | None) -> dict:
     status = "match"
 
     m = _PREFIX_RE.match(text)
+    lead = ""
     if not m:
-        return {**base, "status": "mismatch",
-                "notes": ['Statement doesn\'t open with "GOVERNMENT WARNING:".']}
+        # The model can capture an adjacent declaration BEFORE the warning
+        # ("CONTAINS SULFITES. GOVERNMENT WARNING: ..."), the mirror of the
+        # trailing case below. Find the prefix wherever it starts; what sits
+        # ahead of it is judged at the end, the same way trailing text is.
+        m = _PREFIX_RE.search(text)
+        if not m:
+            return {**base, "status": "mismatch",
+                    "notes": ['Statement doesn\'t open with "GOVERNMENT WARNING:".']}
+        lead = text[:m.start()].strip()
 
     prefix = _squash(m.group(1))
     if prefix != prefix.upper():
@@ -101,5 +109,12 @@ def check(found: str | None, prefix_bold: bool | None) -> dict:
             status = "review"
             notes.append('Couldn\'t tell from the image whether "GOVERNMENT WARNING" '
                          'is bold — check by eye.')
+
+    if lead:
+        if status == "match":
+            status = "review"
+        notes.append('Extra text was captured before the warning '
+                     f'("{lead[:40]}"). Confirm it\'s a separate declaration, '
+                     'not part of the statement.')
 
     return {**base, "status": status, "notes": notes}

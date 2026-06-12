@@ -81,7 +81,10 @@ Dave's worry about dumb pattern matching. Three-way outcomes instead of
 binary:
 
 - Case-only differences (STONE'S THROW vs Stone's Throw) match, with a note.
-  Same for curly vs straight apostrophes and unit rewrites (75 cL vs 750 mL).
+  Same for curly vs straight apostrophes and unit rewrites (75 cL vs 750 mL),
+  including import notations — the EU decimal comma ("0,7 L", "5,0% vol") and
+  fractional pints ("1/2 PINT", "½ PINT") read as the volumes they are, not as
+  thousands separators or bare digits.
 - A label that adds a qualifier the application leaves off ("Malt & Hop" vs
   "Malt & Hop Brewery", "Ale" vs "Ale with Honey...") goes to review, not a
   hard fail — whole-word containment, an agent's call.

@@ -106,11 +106,27 @@ def check_text(field: str, label: str, expected: str | None,
                    ["Doesn't match the application."])
 
 
+# number reading, shared by the ABV and volume parsers
+#
+# Imported labels write decimals with a comma ("5,0% vol", "0,7 L") where US
+# ones use commas as thousands separators ("1,750 mL"). The two never collide:
+# a decimal comma is followed by one or two digits, a thousands group always
+# by three. Beer also states fractions ("1/2 PINT").
+
+def _to_float(num: str) -> float:
+    if "/" in num:
+        whole, part = num.split("/")
+        return float(whole) / float(part)
+    if re.fullmatch(r"\d+,\d{1,2}", num):
+        return float(num.replace(",", "."))   # EU decimal comma
+    return float(num.replace(",", ""))        # US thousands separator
+
+
 # alcohol content
 
-_PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
-_PROOF = re.compile(r"(\d+(?:\.\d+)?)\s*proof", re.IGNORECASE)
-_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+_PCT = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
+_PROOF = re.compile(r"(\d+(?:[.,]\d+)?)\s*proof", re.IGNORECASE)
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
 
 def parse_abv(text: str | None) -> float | None:
@@ -118,11 +134,11 @@ def parse_abv(text: str | None) -> float | None:
     if not text:
         return None
     if m := _PCT.search(text):
-        return float(m.group(1))
+        return _to_float(m.group(1))
     if m := _PROOF.search(text):
-        return float(m.group(1)) / 2  # proof is exactly twice the ABV
+        return _to_float(m.group(1)) / 2  # proof is exactly twice the ABV
     if m := _NUMBER.search(text):
-        return float(m.group(0))
+        return _to_float(m.group(0))
     return None
 
 
@@ -149,7 +165,7 @@ def check_abv(expected: str | None, found: str | None) -> dict:
     # Labels usually print proof too, and proof is exactly 2x ABV. That makes
     # it a free second reading of the same number — useful because a misread
     # digit in tiny print is the model's most common error on hard images.
-    proof_raw = float(m.group(1)) if (m := _PROOF.search(found)) else None
+    proof_raw = _to_float(m.group(1)) if (m := _PROOF.search(found)) else None
     proof_abv = proof_raw / 2 if proof_raw is not None else None
 
     if abs(want - got) > 0.001:
@@ -194,10 +210,11 @@ _UNIT_ML = {
     "gal": 3785.412, "gallon": 3785.412,
 }
 
-# a number ("750", "1,750", "1.75", ".75") followed by any of those units.
-# word forms come before abbreviations, and bare "l" is last so "ml"/"cl"/"dl"
+# a number ("750", "1,750", "0,7", "1.75", ".75", "1/2") followed by any of
+# those units. Fractions come first so "1/2" doesn't read as "2"; word-form
+# units come before abbreviations, and bare "l" is last so "ml"/"cl"/"dl"
 # match their own alternative first.
-_VOL_NUM = r"(\d[\d,]*(?:\.\d+)?|\.\d+)"
+_VOL_NUM = r"(\d+\s*/\s*\d+|\d[\d,]*(?:\.\d+)?|\.\d+)"
 _UNIT = (
     r"fl\.?\s*oz\.?|fluid\s*ounces?"
     r"|milliliters?|millilitres?|centiliters?|centilitres?"
@@ -210,22 +227,23 @@ _QTY = re.compile(_VOL_NUM + r"\s*(" + _UNIT + r")", re.IGNORECASE)
 # beer states compound imperial quantities like "1 PT. 0.9 FL. OZ." — a sum,
 # handled before the general case so the parts add instead of the first winning.
 _PINT_COMPOUND = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:pts?|pints?)\b\.?[\s,]*"
-    r"(?:(\d+(?:\.\d+)?)\s*fl\.?\s*oz\.?)?",
+    r"(\d+\s*/\s*\d+|\d+(?:[.,]\d+)?)\s*(?:pts?|pints?)\b\.?[\s,]*"
+    r"(?:(\d+\s*/\s*\d+|\d+(?:[.,]\d+)?)\s*fl\.?\s*oz\.?)?",
     re.IGNORECASE,
 )
 
-
-def _to_float(num: str) -> float:
-    return float(num.replace(",", ""))
+# typeset fractions ("½ PINT") fold to the plain a/b form the regexes read
+_VULGAR = str.maketrans({"½": "1/2", "⅓": "1/3", "¼": "1/4", "¾": "3/4", "⁄": "/"})
 
 
 def parse_volume_ml(text: str | None) -> float | None:
     """Read a net-contents string as millilitres, or None if it isn't a volume."""
     if not text:
         return None
+    text = text.translate(_VULGAR)
     if m := _PINT_COMPOUND.search(text):
-        return _to_float(m.group(1)) * 473.176 + float(m.group(2) or 0) * 29.5735
+        return (_to_float(m.group(1)) * 473.176
+                + (_to_float(m.group(2)) if m.group(2) else 0.0) * 29.5735)
     # The first quantity+unit wins. A label that restates one volume two ways —
     # "750 mL (25.4 FL OZ)" — should read as the principal value, not the sum.
     if m := _QTY.search(text):

@@ -137,6 +137,15 @@ def test_abv_misread_percent_caught_by_proof():
     assert "proof" in r["notes"][0].lower() and "misread" in r["notes"][0].lower()
 
 
+def test_abv_eu_decimal_comma():
+    # Imported labels write "5,0% vol." — a decimal comma, not zero percent.
+    assert verify.parse_abv("5,0% vol.") == 5.0
+    assert verify.parse_abv("ALC. 12,5% VOL.") == 12.5
+    assert verify.check_abv("5%", "5,0% vol.")["status"] == MATCH
+    # and a genuinely different value must still fail
+    assert verify.check_abv("5%", "4,5% vol.")["status"] == MISMATCH
+
+
 def test_abv_genuine_mismatch_with_matching_proof_still_fails():
     # Both % and proof say 40 while the application says 45 — that's a real
     # mismatch, not a misread, and must still fail.
@@ -189,6 +198,10 @@ VOLUME_MATRIX = [
     ("1 pint", 473.176), ("1 pt", 473.176), ("1 pt.", 473.176),
     ("1 quart", 946.353), ("1 qt", 946.353),
     ("1 gallon", 3785.412), ("1 gal", 3785.412), ("1 gal.", 3785.412),
+    # EU decimal comma (imports) — not a thousands separator
+    ("0,7 L", 700), ("0,75 L", 750), ("1,75 L", 1750), ("ALC 12,5", None),
+    # fractions, typeset or plain
+    ("1/2 PINT", 236.588), ("½ PINT", 236.588), ("1/2 GALLON", 1892.706),
     # compound, and a label restating one volume two ways (principal wins)
     ("1 PINT 0.9 FL. OZ.", 499.79), ("750 mL (25.4 FL OZ)", 750),
     # not a volume
@@ -213,6 +226,7 @@ def test_volume_equivalences_all_match():
         ("750 mL", "25.36 fl oz"), ("700 mL", "23.6698 ounces"),
         ("1 L", "1000 mL"), ("1.75 L", "1750 mL"), ("1 quart", "946.353 mL"),
         ("1 pint", "16 fl oz"), ("1 gallon", "3785.412 mL"),
+        ("750 mL", "0,75 L"), ("700 mL", "0,7 L"), ("1/2 pint", "8 fl oz"),
     ]
     for a, b in same:
         assert verify.check_net_contents(a, b)["status"] == MATCH, (a, b)
@@ -221,7 +235,8 @@ def test_volume_equivalences_all_match():
 def test_volume_near_sizes_still_distinct():
     # adjacent real bottle sizes must NOT be folded together
     for a, b in [("750 mL", "720 mL"), ("700 mL", "750 mL"),
-                 ("1 pint", "1 quart"), ("375 mL", "350 mL")]:
+                 ("1 pint", "1 quart"), ("375 mL", "350 mL"),
+                 ("750 mL", "0,7 L"), ("375 mL", "1/2 pint")]:
         assert verify.check_net_contents(a, b)["status"] == MISMATCH, (a, b)
 
 
@@ -290,6 +305,28 @@ def test_warning_with_trailing_declaration_is_review_not_fail():
     r = govwarning.check(text, prefix_bold=True)
     assert r["status"] == REVIEW
     assert "extra text" in r["notes"][0].lower()
+
+
+def test_warning_with_leading_declaration_is_review_not_fail():
+    # The mirror of the trailing case: a declaration captured BEFORE a
+    # word-perfect warning shouldn't hard-fail a compliant label.
+    text = "CONTAINS SULFITES. " + govwarning.FULL_TEXT
+    r = govwarning.check(text, prefix_bold=True)
+    assert r["status"] == REVIEW
+    assert "before the warning" in " ".join(r["notes"])
+
+
+def test_warning_leading_text_with_bad_body_still_fails():
+    # leading text must not soften a warning that's actually wrong
+    bad = govwarning.FULL_TEXT.replace("should not drink", "should avoid")
+    r = govwarning.check("CONTAINS SULFITES. " + bad, prefix_bold=True)
+    assert r["status"] == MISMATCH
+
+
+def test_warning_foreign_statement_rejected():
+    # the Krug case from the eval: a UK-style notice is not the US warning
+    r = govwarning.check("Enjoy Responsibly. drinkaware.co.uk", prefix_bold=None)
+    assert r["status"] == MISMATCH
 
 
 def test_warning_truncated_rejected():
