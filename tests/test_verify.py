@@ -36,6 +36,24 @@ def test_brand_different_name_is_mismatch():
     assert r["status"] == MISMATCH
 
 
+def test_label_adds_qualifier_is_review_not_fail():
+    # The label states the same thing plus an extra word — agent's call, not
+    # a hard fail. ("Malt & Hop" vs "Malt & Hop Brewery" came up in testing.)
+    r = verify.check_text("brand_name", "Brand", "Malt & Hop", "MALT & HOP BREWERY")
+    assert r["status"] == REVIEW
+    r2 = verify.check_text("class_type", "Class", "Ale",
+                           "Ale with Honey and Huckleberry Flavor", fuzzy=0.8)
+    assert r2["status"] == REVIEW
+
+
+def test_substring_word_boundary_not_fooled():
+    # "Ale" must not be treated as contained in "Pale Ale Lager"? It IS a
+    # whole word there, so that's a legitimate review. But "Ale" vs "Tale"
+    # must NOT match as containment (different word).
+    r = verify.check_text("class_type", "Class", "Ale", "Tale of Two Barrels", fuzzy=0.8)
+    assert r["status"] == MISMATCH
+
+
 def test_brand_missing_from_label():
     r = verify.check_text("brand_name", "Brand", "OLD TOM DISTILLERY", None)
     assert r["status"] == MISSING
@@ -60,6 +78,14 @@ def test_abv_mismatch():
     r = verify.check_abv("45%", "40% Alc./Vol. (80 Proof)")
     assert r["status"] == MISMATCH
     assert "45" in r["notes"][0] and "40" in r["notes"][0]
+
+
+def test_abv_blank_application_is_review_optional():
+    # ABV is optional (wine/beer exemptions); blank should read as intentional,
+    # not a parse error.
+    r = verify.check_abv("", "12% Alc./Vol.")
+    assert r["status"] == REVIEW
+    assert "optional" in r["notes"][0].lower()
 
 
 def test_abv_inconsistent_proof_flagged():

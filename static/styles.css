@@ -57,6 +57,7 @@ h2 { font-size: 19px; margin: 0 0 14px; }
 .col { flex: 1 1 320px; }
 
 label { display: block; margin: 14px 0 4px; font-weight: 600; }
+.opt { font-weight: 400; color: #6b7280; font-size: 14.5px; }
 input[type="text"], input:not([type]), input[type="file"] {
   width: 100%;
   padding: 12px;

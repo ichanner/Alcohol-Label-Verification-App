@@ -62,7 +62,17 @@ def check_text(field: str, label: str, expected: str | None,
         # so we do too but say so, rather than silently passing it
         return _result(field, label, MATCH, expected, found,
                        ["Matches apart from capitalization."])
-    ratio = SequenceMatcher(None, e.casefold(), f.casefold()).ratio()
+    ce, cf = e.casefold(), f.casefold()
+    if f" {ce} " in f" {cf} " or f" {cf} " in f" {ce} ":
+        # One fully contains the other as whole words: the label states the
+        # same thing with an added qualifier ("Malt & Hop" vs "Malt & Hop
+        # Brewery", "Ale" vs "Ale with Honey..."). That's a judgment call for
+        # an agent, not a hard mismatch. (Padding with spaces keeps it to
+        # whole words, so "Ale" doesn't match inside "Pale".)
+        return _result(field, label, REVIEW, expected, found,
+                       ["The label and application agree but one adds extra "
+                        "words — confirm they refer to the same thing."])
+    ratio = SequenceMatcher(None, ce, cf).ratio()
     if ratio >= fuzzy:
         return _result(field, label, REVIEW, expected, found,
                        [f"Close but not identical ({ratio:.0%} similar) — "
@@ -97,6 +107,13 @@ def check_abv(expected: str | None, found: str | None) -> dict:
         return _result(field, label, MISSING, expected, found,
                        ["Not found on the label."])
     want, got = parse_abv(expected), parse_abv(found)
+    if not (expected or "").strip():
+        # ABV is optional in the application — some wine and beer are exempt
+        # from stating it. Left blank on purpose, so review against the label
+        # rather than treating it as an error.
+        return _result(field, label, REVIEW, expected, found,
+                       ["No alcohol content in the application (optional for some "
+                        f"wine and beer). The label shows: {found.strip()}."])
     if want is None:
         return _result(field, label, REVIEW, expected, found,
                        ["Couldn't read an ABV number off the application — check manually."])
