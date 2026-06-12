@@ -71,6 +71,11 @@ The suite covers the comparison logic — no API key or network needed.
 `scripts/make_test_labels.py` regenerates the sample images if you want to
 tweak them.
 
+There's also a small eval against photos of real commercial labels (this one
+does need an API key): `python scripts/eval_real_labels.py --fetch` downloads
+the images from Wikimedia Commons, then run it again without the flag to
+score. Method and results are written up in [docs/NOTES.md](docs/NOTES.md).
+
 ## Deploying
 
 The repo includes a `render.yaml` blueprint: push to GitHub, create a new
@@ -87,7 +92,8 @@ docker run -p 8000:8000 -e ANTHROPIC_API_KEY=sk-ant-... labelcheck
 | Variable | Default | What it does |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required. The key used for label reading. |
-| `EXTRACTION_MODEL` | `claude-haiku-4-5` | Which Claude model reads labels. Haiku keeps checks inside the ~5s budget; `claude-sonnet-4-6` reads rough photos a bit better but is slower. |
+| `EXTRACTION_MODEL` | `claude-haiku-4-5` | Which Claude model reads labels in the interactive check. Haiku keeps results inside the ~5s budget. |
+| `BATCH_EXTRACTION_MODEL` | same as above | Batch jobs aren't latency-bound, so they can run `claude-sonnet-4-6` for measurably better accuracy on rough images (numbers in [eval/RESULTS.md](eval/RESULTS.md)). |
 
 ## Project layout
 
@@ -99,7 +105,8 @@ labelcheck/          the app
   govwarning.py      the strict 27 CFR Part 16 warning-statement check
 static/              the front end (plain HTML/CSS/JS, no build step)
 samples/             generated test labels + a batch CSV that uses them
-scripts/             the label generator
+eval/                real-label eval: hand-labeled ground truth manifest
+scripts/             the label generator + the real-label eval runner
 tests/               unit tests for the comparison logic
 ```
 
