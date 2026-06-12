@@ -21,6 +21,7 @@ another panel. Any review flags it for a human; otherwise it passes.
 from __future__ import annotations
 
 import re
+import unicodedata
 from difflib import SequenceMatcher
 
 from . import govwarning
@@ -35,7 +36,17 @@ _QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "`": "'
 
 
 def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", text.translate(_QUOTES)).strip()
+    """Normalize for comparison only — the original is still shown to the agent.
+
+    Folds the things that obviously mean the same word: curly quotes, accents
+    (Château = Chateau, Añejo = Anejo), "&" vs "and", and runs of whitespace.
+    """
+    text = text.translate(_QUOTES)
+    # strip diacritics: decompose, drop the combining marks, recompose
+    text = "".join(c for c in unicodedata.normalize("NFKD", text)
+                   if not unicodedata.combining(c))
+    text = re.sub(r"\s*&\s*", " and ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _result(field: str, label: str, status: str, expected, found,
@@ -201,7 +212,10 @@ def check_net_contents(expected: str | None, found: str | None) -> dict:
     if want is None or got is None:
         # Couldn't make sense of one side as a volume so fall back to text
         return check_text(field, label, expected, found)
-    if abs(want - got) <= 1:  # fl oz to and from mL conversions round a little
+    # A small proportional tolerance: enough to absorb fl-oz <-> mL rounding
+    # (a "25.4 FL OZ" label is 751 mL, a hair off 750), but far tighter than
+    # the gap between any two standard bottle sizes (700 vs 720 vs 750 mL).
+    if abs(want - got) <= max(1.0, 0.005 * want):
         notes = []
         if _clean(expected).casefold() != _clean(found).casefold():
             notes.append(f'Same volume, written differently '

@@ -26,6 +26,23 @@ def test_brand_curly_apostrophe_is_fine():
     assert r["status"] == MATCH
 
 
+def test_diacritics_fold_to_match():
+    # "Château" and "Chateau", "Añejo" and "Anejo" are the same word.
+    assert verify.check_text("brand_name", "Brand",
+                             "Chateau Batailley", "Château Batailley")["status"] == MATCH
+    assert verify.check_text("class_type", "Class",
+                             "Tequila Anejo", "Tequila Añejo")["status"] == MATCH
+
+
+def test_ampersand_equals_and():
+    # "Malt & Hop" and "Malt and Hop" are the same brand.
+    assert verify.check_text("brand_name", "Brand",
+                             "Malt & Hop", "Malt and Hop")["status"] == MATCH
+    # and it must not paper over a genuinely different name
+    assert verify.check_text("brand_name", "Brand",
+                             "Malt & Hop", "Hops & Grain")["status"] == MISMATCH
+
+
 def test_brand_typo_needs_review():
     r = verify.check_text("brand_name", "Brand", "OLD TOM DISTILLERY", "OLD TOM DISTILERY")
     assert r["status"] == REVIEW
@@ -137,6 +154,13 @@ def test_volume_pints_and_compound_quantities():
 def test_net_contents_mismatch():
     r = verify.check_net_contents("750 mL", "700 mL")
     assert r["status"] == MISMATCH
+
+
+def test_net_contents_floz_rounding_matches():
+    # "25.4 FL OZ" is 751 mL — the same 750 mL bottle, rounded. Should match.
+    assert verify.check_net_contents("750 mL", "25.4 fl oz")["status"] == MATCH
+    # but adjacent standard sizes must still be caught as different
+    assert verify.check_net_contents("750 mL", "720 mL")["status"] == MISMATCH
 
 
 # --- government warning -----------------------------------------------------------
