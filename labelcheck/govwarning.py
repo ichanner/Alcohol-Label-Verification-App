@@ -64,10 +64,25 @@ def check(found: str | None, prefix_bold: bool | None) -> dict:
         status = "mismatch"
         notes.append('Missing the colon after "GOVERNMENT WARNING".')
 
-    body = text[m.end():]
-    if _squash(body).casefold() != _squash(BODY).casefold():
-        status = "mismatch"
-        notes.append(_first_difference(BODY, body))
+    body = _squash(text[m.end():])
+    want = _squash(BODY)
+    if body.casefold() != want.casefold():
+        if body.casefold().startswith(want.casefold()):
+            # The full, correct warning is present but more text was captured
+            # after it — typically an adjacent declaration like "CONTAINS:
+            # SULFITES" that sits next to the warning on the panel. The
+            # warning itself is compliant, so flag for a human instead of
+            # failing it. (A reworded or truncated warning isn't a prefix of
+            # the real text and still falls through to mismatch below.)
+            if status == "match":
+                status = "review"
+            extra = body[len(want):].strip(" .,;")
+            notes.append('Warning text is correct, but extra text was captured '
+                         f'with it ("{extra[:40]}"). Confirm it\'s a separate '
+                         'declaration, not an alteration of the warning.')
+        else:
+            status = "mismatch"
+            notes.append(_first_difference(BODY, body))
 
     '''
     Bold type is the one thing we can't verify reliably from a

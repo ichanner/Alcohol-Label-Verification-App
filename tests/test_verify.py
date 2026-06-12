@@ -119,6 +119,16 @@ def test_warning_reworded_body_rejected():
     assert "differs at word" in r["notes"][0]
 
 
+def test_warning_with_trailing_declaration_is_review_not_fail():
+    # Real labels print the warning right next to other mandatory text (e.g.
+    # a sulfite declaration), which the model can capture together. The
+    # warning itself is correct, so this should flag for review, not fail.
+    text = govwarning.FULL_TEXT + " CONTAINS: SULFITES"
+    r = govwarning.check(text, prefix_bold=True)
+    assert r["status"] == REVIEW
+    assert "extra text" in r["notes"][0].lower()
+
+
 def test_warning_truncated_rejected():
     text = " ".join(govwarning.FULL_TEXT.split()[:20])
     r = govwarning.check(text, prefix_bold=True)

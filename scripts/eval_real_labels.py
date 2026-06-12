@@ -50,6 +50,8 @@ def load_manifest():
 DIRECT_URLS = {
     "ttb-hws1.png": ("https://www.ttb.gov/system/files/styles/wide/private/images/"
                      "beer/labeling/health-warning-statement/hws1.png"),
+    "ttb-hws2.png": ("https://www.ttb.gov/system/files/styles/wide/private/images/"
+                     "beer/labeling/health-warning-statement/hws2.png"),
 }
 
 
@@ -114,15 +116,24 @@ def score(row, got):
         out.append(("net", None, got.get("net_contents")))
 
     if row["warning_present"] == "yes":
-        # the label really carries the warning: it should be transcribed well
-        # enough that the strict check accepts it (review = bold uncertainty)
+        # the label really carries the US warning: it should be transcribed
+        # well enough that the strict check accepts it (review = bold doubt)
         res = govwarning.check(got.get("government_warning"),
                                got.get("warning_prefix_bold"))
         ok = res["status"] in ("match", "review")
         out.append(("warning-read", ok,
                     res["status"] + (": " + res["notes"][0] if res["notes"] else "")))
+    elif row["warning_present"] == "foreign":
+        # a non-US warning is on the label (e.g. the UK "Drink Responsibly"
+        # box on an import). The strict checker must NOT accept it as the
+        # 27 CFR statement — correct outcome is mismatch or missing.
+        res = govwarning.check(got.get("government_warning"),
+                               got.get("warning_prefix_bold"))
+        ok = res["status"] not in ("match", "review")
+        out.append(("foreign-warning-rejected", ok,
+                    res["status"] + (": " + res["notes"][0] if res["notes"] else "")))
     else:
-        # no warning in the photo, so "found one" means hallucination
+        # no warning on the label, so "found one" means hallucination
         invented = bool(got.get("government_warning"))
         out.append(("no-invented-warning", not invented,
                     "INVENTED A WARNING" if invented else "correctly absent"))

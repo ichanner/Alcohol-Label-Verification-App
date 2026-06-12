@@ -101,60 +101,74 @@ comfort that kills trust in a tool like this.
 
 ## Measured on real labels
 
-Synthetic samples prove the plumbing, not the model, so there's a small
-real-world eval in the repo: 14 images. 13 photos of real commercial labels
-from Wikimedia Commons plus TTB's own example label from the ttb.gov labeling
-guidance (that one shows the full warning on a back panel). eval/labels.csv
-has the hand-transcribed ground truth and attribution.
+Synthetic samples prove the plumbing, not the model, so there's a real-world
+eval in the repo: 19 images. 17 photos of real commercial labels from
+Wikimedia Commons plus two TTB example labels from the ttb.gov labeling
+guidance (those carry the full US warning). eval/labels.csv has the
+hand-transcribed ground truth and attribution.
 `python scripts/eval_real_labels.py --fetch` re-downloads the images, run it
-again without the flag to score. The set is deliberately ugly: flash glare,
-dark bar lighting, curved glass, a museum case, a stained 1947 Bordeaux,
-by-weight beer ABVs, a 70 cl bottle, vertical and handwritten type, compound
-pint+ounce net contents.
+again without the flag to score. The set spans whiskey, vodka, tequila, an EU
+aperitif, vintage wine and champagne, and beer, and is deliberately ugly:
+flash glare, dark bar lighting, curved glass, a museum case, a stained 1947
+Bordeaux, by-weight beer ABVs, EU export units, vertical and handwritten type,
+compound pint+ounce net contents. Three images exercise the warning directly:
+two with the real US warning, and a Krug champagne carrying a *UK* "Drink
+Responsibly" box (an import) that the strict checker must refuse to accept.
 
-Both candidate models ran the set 3 times each. Raw output is in
+Both candidate models ran the set 3 times each (114 reads). Raw output is in
 eval/RESULTS.md. Scored only where a human can read the image:
 
 | field | haiku 4.5 (3 runs) | sonnet 4.6 (3 runs) |
 |---|---|---|
-| brand name | 13-14 / 14 | 13/14 every run |
-| class/type | 10-11 / 12 | 12/12 every run |
-| alcohol content | 6-7 / 9 | 9/9 every run |
-| net contents | 6/8 | 8/8 every run |
-| TTB example warning transcribed + strict check passes | 1/1 | 1/1 |
-| invented warnings on the 13 warning-free images | 0 | 0 |
-| latency | median 5.9s, p90 9.8s | median 8.6s, p90 14.6s |
+| brand name | 18-19 / 19 | 18/19 every run |
+| class/type | 12-13 / 14 | 14/14 every run |
+| alcohol content | 8/11 | 11/11 every run |
+| net contents | 9/11 | 11/11 every run |
+| US warning transcribed + strict check passes | 2/2 (one run 1/2) | 2/2 every run |
+| foreign (UK) warning correctly rejected | 1/1 every run | 1/1 every run |
+| invented warnings on the 16 warning-free images | 0 | 0 |
+| latency | median 7.4s, p90 12.1s | median 11.4s, p90 18.9s |
 
-The result I actually care about: both models transcribed the warning
-verbatim off a 691px two-panel image and the strict checker passed it, and in
-84 reads neither model ever invented a warning on an image that doesn't show
-one. They know the statutory text, so filling it in "helpfully" was the
-failure mode I was most worried about.
+The two safety-critical numbers are the ones I care about, and both are
+perfect across all 114 reads: neither model ever invented a warning where
+none exists, and both correctly rejected the UK warning on the import instead
+of green-lighting it as US-compliant. Inventing the statutory text it knows by
+heart, or rubber-stamping a foreign warning, were the two failure modes that
+would actually matter for compliance, and neither happened once.
 
-Differences: all of haiku's misses and all of its run-to-run wobble sit on
-the two pre-1989 museum bottles ("PREX" for APEX through display glass,
-by-weight ABV lines), plus two digit slips in tiny print: 45.9 where a dim
-shot reads 45.2 (the label's own "90.4 Proof" contradicts it, which the proof
-cross-check catches) and 0.8 where TTB's micro-print says 0.9. The rest of
-its misses were nulls it flagged itself, which route to review. Sonnet read
-everything and didn't flip once across runs, including micro text haiku gave
-up on. Its one "miss" is a naming judgment: it said the brand was SIERRA
-NEVADA where my ground truth says Torpedo, and on the real COLA Sierra Nevada
-is the brand, so it arguably out-judged my manifest.
+Differences: all of haiku's misses and run-to-run wobble sit on the hard
+cases — "PREX/PREXY" for APEX through museum glass, two 0.1-digit slips in
+micro-print (Van Winkle 45.3 vs 45.2, where its own "90.4 Proof" read
+contradicts it and the proof cross-check catches the inconsistency; TTB hws1
+0.8 vs 0.9 fl oz), and a few nulls it flags itself and routes to review.
+Sonnet read every legible field, didn't flip once across runs, and its only
+"miss" is a naming judgment: "SIERRA NEVADA" where my ground truth says
+Torpedo, and on the real COLA Sierra Nevada *is* the brand, so it arguably
+out-judged the manifest.
 
-The config that falls out of this: haiku for the interactive check (5s
-budget, artwork is usually clean), sonnet as the batch opt-in
-(BATCH_EXTRACTION_MODEL=claude-sonnet-4-6) where nobody is watching a
-spinner. Defaults keep both on haiku so out-of-the-box behavior is
-consistent.
+The config that falls out of this: haiku for the interactive check (5s budget,
+artwork is usually clean), sonnet as the batch opt-in
+(BATCH_EXTRACTION_MODEL=claude-sonnet-4-6) where nobody is watching a spinner.
+Defaults keep both on haiku.
 
-Caveats. The models corrected me twice (my first-pass ground truth said 43%
-on one bourbon, zooming proved 45%; and a 750mL micro-print I'd missed
-entirely). The eval also caught a parser gap: TTB's example uses "1 PINT, 0.9
-FL. OZ.", which parse_volume_ml didn't handle until then. And real COLA
-submissions are flat print-ready artwork, much closer to the clean synthetic
-samples (~3s, reliably extracted) than to photos through museum glass, so
-these numbers are a hard-mode floor. n=14 is a smoke test, not a benchmark.
+The eval earns its keep as a dev tool, which is the real reason to have one.
+It caught a parser gap (the "1 PINT, 0.9 FL. OZ." compound format
+parse_volume_ml didn't handle), it corrected my own ground truth twice (a 43%
+I'd misread as the model's error when the label says 45%, and a 750mL
+micro-print I'd missed), and — best of all — it caught the checker
+*false-failing* a compliant label: TTB's hws2 prints the warning next to
+"CONTAINS: SULFITES", the model captured both, and the strict check rejected a
+warning that's actually word-perfect. Fixed so a complete-but-trailing-text
+warning routes to review, not fail (truncated/reworded still fail). A
+false-fail on a compliant label is exactly the kind of thing that makes an
+agent stop trusting the tool, so finding it before shipping was worth more
+than any single accuracy point.
+
+Real COLA submissions are flat print-ready artwork, much closer to the clean
+synthetic samples (~3s, reliably extracted) than to photos through museum
+glass, so these numbers are a hard-mode floor. n=19 is still a smoke test, not
+a benchmark — the production measurement program (a few hundred real COLA
+images) is the top next step below.
 
 ## Firewall
 
