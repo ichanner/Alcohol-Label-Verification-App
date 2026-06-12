@@ -105,7 +105,7 @@ async def verify_single(
     except UnidentifiedImageError as e:
         _audit("verify.rejected", request_id=rid, image=image.filename, reason=_friendly(e))
         raise HTTPException(400, _friendly(e))
-    except (RuntimeError, anthropic.APIConnectionError, anthropic.APIStatusError) as e:
+    except Exception as e:  # belt and braces, this endpoint is public
         _audit("verify.error", request_id=rid, image=image.filename, reason=_friendly(e))
         raise HTTPException(502, _friendly(e))
 
