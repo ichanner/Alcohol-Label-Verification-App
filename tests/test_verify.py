@@ -244,6 +244,15 @@ def test_net_contents_mismatch():
     assert r["status"] == MISMATCH
 
 
+def test_net_contents_unparseable_side_is_review_not_fail():
+    # A value the converter can't read (spelled-out number, OCR noise) should
+    # flag for a human, not hard-fail — same fail-safe as alcohol content.
+    r = verify.check_net_contents("seven hundred fifty milliliters", "750 mL")
+    assert r["status"] == REVIEW
+    r2 = verify.check_net_contents("750 mL", "garbled")
+    assert r2["status"] == REVIEW
+
+
 def test_net_contents_floz_rounding_matches():
     # "25.4 FL OZ" is 751 mL — the same 750 mL bottle, rounded. Should match.
     assert verify.check_net_contents("750 mL", "25.4 fl oz")["status"] == MATCH

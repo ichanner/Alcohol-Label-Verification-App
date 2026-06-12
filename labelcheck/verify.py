@@ -241,9 +241,17 @@ def check_net_contents(expected: str | None, found: str | None) -> dict:
         return _result(field, label, MISSING, expected, found,
                        ["Not found in this image — check the other panels of the label."])
     want, got = parse_volume_ml(expected), parse_volume_ml(found)
-    if want is None or got is None:
-        # Couldn't make sense of one side as a volume so fall back to text
+    if want is None and got is None:
+        # Neither side reads as a volume — compare as plain text instead.
         return check_text(field, label, expected, found)
+    if want is None or got is None:
+        # One side is a volume, the other we couldn't parse (an odd format, a
+        # spelled-out number, OCR noise). Don't hard-fail on that — flag it for
+        # a human, the same fail-safe the alcohol-content check uses.
+        side = "application" if want is None else "label"
+        return _result(field, label, REVIEW, expected, found,
+                       [f"Couldn't read the {side}'s net contents as a volume "
+                        f"({(expected if want is None else found).strip()}) — check manually."])
     # A small proportional tolerance: enough to absorb fl-oz <-> mL rounding
     # (a "25.4 FL OZ" label is 751 mL, a hair off 750), but far tighter than
     # the gap between any two standard bottle sizes (700 vs 720 vs 750 mL).

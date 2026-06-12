@@ -237,6 +237,12 @@ eval before any model or prompt change ships.
   scope (below).
 - One image per application. Front + back would need a small extension.
 - No persistence, no auth. Fine for a prototype, revisit for production.
+- Quantities are numeric. Real labels and COLA applications state ABV and net
+  contents in numerals ("40%", "750 mL"), never spelled out ("forty percent"),
+  so the parsers expect digits. A spelled-out value isn't read as a number and
+  falls through to review rather than failing — a word-to-number library
+  (numerizer, word2number) could handle it, but it's a dependency and a new
+  ambiguity surface for input that doesn't occur in the real data flow.
 
 ## Known limitations
 
