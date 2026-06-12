@@ -33,19 +33,29 @@ MISSING = "missing"
 
 # labels love decorative type, fold curly quotes into plain ones first
 _QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "`": "'"})
+# separators that don't change the words: hyphen, slash, the en/em dashes
+_SEPARATORS = str.maketrans({"-": " ", "/": " ", "–": " ", "—": " "})
 
 
 def _clean(text: str) -> str:
     """Normalize for comparison only — the original is still shown to the agent.
 
-    Folds the things that obviously mean the same word: curly quotes, accents
-    (Château = Chateau, Añejo = Anejo), "&" vs "and", and runs of whitespace.
+    This is deliberately limited to differences that don't change the words:
+    curly quotes, accents (Château = Chateau, Añejo = Anejo), "&" vs "and",
+    the whisky/whiskey spelling, separating punctuation (Single-Barrel =
+    Single Barrel, Co. = Co, Booker's = Bookers), and whitespace. It does NOT
+    try to resolve synonyms, abbreviations (Co. vs Company), or word order —
+    those need judgment and are left to the review tier on purpose.
     """
     text = text.translate(_QUOTES)
-    # strip diacritics: decompose, drop the combining marks, recompose
+    # strip diacritics: decompose, drop the combining marks
     text = "".join(c for c in unicodedata.normalize("NFKD", text)
                    if not unicodedata.combining(c))
     text = re.sub(r"\s*&\s*", " and ", text)
+    text = re.sub(r"\bwhisk(?:e)?y\b", "whiskey", text, flags=re.IGNORECASE)
+    text = text.replace("'", "")          # Booker's -> Bookers
+    text = text.translate(_SEPARATORS)    # Single-Barrel -> Single Barrel
+    text = re.sub(r"[.,]", "", text)      # Co. -> Co
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -170,7 +180,7 @@ def check_abv(expected: str | None, found: str | None) -> dict:
 _VOLUME = re.compile(
     r"(\d+(?:\.\d+)?)\s*"
     r"(fl\.?\s*oz\.?|milliliters?|millilitres?|centiliters?|centilitres?"
-    r"|liters?|litres?|m\s?l|cl|oz\.?|l\b)",
+    r"|liters?|litres?|quarts?|qts?\.?|gallons?|gals?\.?|m\s?l|cl|oz\.?|l\b)",
     re.IGNORECASE,
 )
 
@@ -179,6 +189,8 @@ _TO_ML = {
     "cl": 10.0, "centiliter": 10.0, "centilitre": 10.0,
     "l": 1000.0, "liter": 1000.0, "litre": 1000.0,
     "floz": 29.5735, "oz": 29.5735,
+    "quart": 946.353, "qt": 946.353,
+    "gallon": 3785.412, "gal": 3785.412,
 }
 
 # beer loves compound imperial quantities like "1 PT. 0.9 FL. OZ."

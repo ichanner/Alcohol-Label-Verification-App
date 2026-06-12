@@ -34,6 +34,23 @@ def test_diacritics_fold_to_match():
                              "Tequila Anejo", "Tequila Añejo")["status"] == MATCH
 
 
+def test_separating_punctuation_folds_to_match():
+    same = [
+        ("Single-Barrel", "Single Barrel"),   # hyphen
+        ("Smith Co.", "Smith Co"),             # trailing period
+        ("Booker's", "Bookers"),               # apostrophe
+        ("A.H. Hirsch", "AH Hirsch"),          # internal periods
+    ]
+    for a, b in same:
+        assert verify.check_text("brand_name", "Brand", a, b)["status"] == MATCH, (a, b)
+
+
+def test_whisky_whiskey_spelling_folds():
+    assert verify.check_text("class_type", "Class",
+                             "Straight Bourbon Whisky",
+                             "Straight Bourbon Whiskey")["status"] == MATCH
+
+
 def test_ampersand_equals_and():
     # "Malt & Hop" and "Malt and Hop" are the same brand.
     assert verify.check_text("brand_name", "Brand",
@@ -135,6 +152,13 @@ def test_volume_parsing_and_units():
     assert verify.parse_volume_ml("75 cl") == 750
     assert verify.parse_volume_ml("1.75 L") == 1750
     assert verify.parse_volume_ml("smooth and mellow") is None
+
+
+def test_volume_quart_and_gallon():
+    assert abs(verify.parse_volume_ml("1 quart") - 946.353) < 0.01
+    assert abs(verify.parse_volume_ml("1 qt") - 946.353) < 0.01
+    assert abs(verify.parse_volume_ml("1 gallon") - 3785.412) < 0.01
+    assert abs(verify.parse_volume_ml("1 gal.") - 3785.412) < 0.01
 
 
 def test_net_contents_same_volume_different_unit():
