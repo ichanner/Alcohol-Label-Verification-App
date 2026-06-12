@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Label Check — TTB label verification</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Label Check</h1>
+    <p class="sub">Compares a label image against the application, field by field.
+      Prototype — results still need an agent's sign-off.</p>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button id="tab-single" class="tab active" role="tab" aria-selected="true">Check one label</button>
+    <button id="tab-batch" class="tab" role="tab" aria-selected="false">Check a batch</button>
+  </nav>
+
+  <main>
+    <!-- ============ single label ============ -->
+    <section id="panel-single" class="panel">
+      <form id="single-form">
+        <div class="columns">
+          <div class="col">
+            <h2>1. Application data</h2>
+            <label for="brand_name">Brand name</label>
+            <input id="brand_name" name="brand_name" required
+                   placeholder="OLD TOM DISTILLERY" autocomplete="off">
+
+            <label for="class_type">Class / type</label>
+            <input id="class_type" name="class_type" required
+                   placeholder="Kentucky Straight Bourbon Whiskey" autocomplete="off">
+
+            <label for="alcohol_content">Alcohol content (% ABV)</label>
+            <input id="alcohol_content" name="alcohol_content" required
+                   placeholder="45%" autocomplete="off">
+
+            <label for="net_contents">Net contents</label>
+            <input id="net_contents" name="net_contents" required
+                   placeholder="750 mL" autocomplete="off">
+          </div>
+
+          <div class="col">
+            <h2>2. Label image</h2>
+            <div id="dropzone" class="dropzone" tabindex="0"
+                 aria-label="Label image. Click to browse or drop a file here.">
+              <span id="dropzone-hint">Drop the label image here,<br>or click to browse</span>
+              <img id="preview" alt="" hidden>
+            </div>
+            <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            <button type="button" id="load-example" class="linkish">
+              No image handy? Load a sample label
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="check-btn" class="primary">Check this label</button>
+      </form>
+
+      <div id="single-status" class="status" hidden></div>
+      <div id="single-result" hidden></div>
+    </section>
+
+    <!-- ============ batch ============ -->
+    <section id="panel-batch" class="panel" hidden>
+      <form id="batch-form">
+        <h2>Batch check</h2>
+        <p>Upload a CSV of application data plus the label images it refers to.
+          The CSV needs these columns:
+          <code>image, brand_name, class_type, alcohol_content, net_contents</code>
+          — where <code>image</code> is the filename of the matching upload.
+          There's a ready-made example in the <code>samples/</code> folder of the repo.</p>
+
+        <label for="csv-input">Application CSV</label>
+        <input id="csv-input" type="file" accept=".csv,text/csv" required>
+
+        <label for="images-input">Label images (select all of them at once)</label>
+        <input id="images-input" type="file" accept="image/png,image/jpeg,image/webp" multiple required>
+
+        <button type="submit" id="batch-btn" class="primary">Run the batch</button>
+      </form>
+
+      <div id="batch-status" class="status" hidden></div>
+      <div id="batch-result" hidden></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Prototype for the TTB Compliance Division. Not connected to COLA.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

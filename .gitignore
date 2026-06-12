@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.DS_Store
+
+# fetched eval photos stay out of the repo, scripts/eval_real_labels.py --fetch
+# pulls them back down from Wikimedia Commons
+eval/images/

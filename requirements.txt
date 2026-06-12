@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+anthropic
+pillow
+python-dotenv
+python-multipart
+
+# tests
+pytest
