@@ -17,7 +17,14 @@ function h(tag, attrs = {}, ...children) {
   return node;
 }
 
-const MARKS = { match: "✓", review: "⚠", mismatch: "✕", missing: "✕" };
+function modelLabel(id) {
+  if (!id) return "";
+  if (id.includes("haiku")) return "Haiku";
+  if (id.includes("sonnet")) return "Sonnet";
+  return id;
+}
+
+const MARKS = { match: "✓", review: "⚠", mismatch: "✕", missing: "⚠" };
 const TONE = { match: "ok", review: "warn", mismatch: "bad", missing: "bad" };
 const OVERALL = {
   pass:   { tone: "ok",   text: "Looks good",
@@ -88,11 +95,11 @@ $("load-example").addEventListener("click", async () => {
     $("alcohol_content").value = "45%";
     $("net_contents").value = "750 mL";
   } catch {
-    status($("single-status"), "Couldn't load the sample image.", true);
+    setStatus($("single-status"), "Couldn't load the sample image.", true);
   }
 });
 
-function status(node, message, isError = false) {
+function setStatus(node, message, isError = false) {
   node.hidden = !message;
   node.textContent = message || "";
   node.classList.toggle("error", isError);
@@ -105,7 +112,7 @@ $("single-form").addEventListener("submit", async (e) => {
   resultBox.replaceChildren();
 
   if (!labelFile) {
-    status($("single-status"), "Add a label image first (or load the sample).", true);
+    setStatus($("single-status"), "Add a label image first (or load the sample).", true);
     return;
   }
 
@@ -114,16 +121,16 @@ $("single-form").addEventListener("submit", async (e) => {
 
   const btn = $("check-btn");
   btn.disabled = true;
-  status($("single-status"), "Checking… this usually takes a few seconds.");
+  setStatus($("single-status"), "Checking… this usually takes a few seconds.");
 
   try {
     const resp = await fetch("/api/verify", { method: "POST", body: form });
     const body = await resp.json();
     if (!resp.ok) throw new Error(body.detail || "Something went wrong.");
-    status($("single-status"), "");
+    setStatus($("single-status"), "");
     renderResult(resultBox, body);
   } catch (err) {
-    status($("single-status"), err.message, true);
+    setStatus($("single-status"), err.message, true);
   } finally {
     btn.disabled = false;
   }
@@ -161,7 +168,9 @@ function renderResult(box, result) {
   box.append(list);
 
   if (result.elapsed_s != null) {
-    box.append(h("p", { class: "timing" }, `Checked in ${result.elapsed_s}s.`));
+    const usedModel = result.model ? ` · ${modelLabel(result.model)}` : "";
+    box.append(h("p", { class: "timing" },
+      `Checked in ${result.elapsed_s}s${usedModel}.`));
   }
   box.hidden = false;
 }
@@ -177,7 +186,7 @@ $("batch-form").addEventListener("submit", async (e) => {
   const csv = $("csv-input").files[0];
   const images = $("images-input").files;
   if (!csv || !images.length) {
-    status($("batch-status"), "Pick the CSV and its label images first.", true);
+    setStatus($("batch-status"), "Pick the CSV and its label images first.", true);
     return;
   }
 
@@ -187,7 +196,7 @@ $("batch-form").addEventListener("submit", async (e) => {
 
   const btn = $("batch-btn");
   btn.disabled = true;
-  status($("batch-status"),
+  setStatus($("batch-status"),
     `Checking ${images.length} label${images.length === 1 ? "" : "s"}… ` +
     "this runs a handful at a time, so larger batches take a few minutes.");
 
@@ -195,10 +204,10 @@ $("batch-form").addEventListener("submit", async (e) => {
     const resp = await fetch("/api/verify-batch", { method: "POST", body: form });
     const body = await resp.json();
     if (!resp.ok) throw new Error(body.detail || "Something went wrong.");
-    status($("batch-status"), "");
+    setStatus($("batch-status"), "");
     renderBatch(resultBox, body);
   } catch (err) {
-    status($("batch-status"), err.message, true);
+    setStatus($("batch-status"), err.message, true);
   } finally {
     btn.disabled = false;
   }
@@ -214,7 +223,7 @@ function renderBatch(box, body) {
   box.append(h("div", { class: `banner ${counts.fail || counts.error ? "bad" : counts.review ? "warn" : "ok"}` },
     `${body.count} labels checked — ${counts.pass} pass, ${counts.review} need review, ` +
     `${counts.fail} fail${counts.error ? `, ${counts.error} errored` : ""}`,
-    h("small", {}, `Finished in ${body.elapsed_s}s.`)));
+    h("small", {}, `Finished in ${body.elapsed_s}s${body.model ? " · " + modelLabel(body.model) : ""}.`)));
 
   const table = h("table", {},
     h("thead", {}, h("tr", {},

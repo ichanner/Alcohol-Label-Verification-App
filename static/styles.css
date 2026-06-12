@@ -96,6 +96,22 @@ input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
   padding: 4px 0;
 }
 
+.model-pick {
+  margin-top: 22px;
+  padding: 12px 16px 14px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+}
+.model-pick legend { font-weight: 600; padding: 0 6px; }
+.model-pick label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 6px 0;
+  font-weight: 400;
+}
+.model-pick input { width: auto; }
+
 button.primary {
   display: block;
   width: 100%;

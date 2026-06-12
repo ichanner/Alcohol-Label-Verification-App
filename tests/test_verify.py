@@ -94,6 +94,22 @@ def test_abv_inconsistent_proof_flagged():
     assert r["status"] == REVIEW
 
 
+def test_abv_misread_percent_caught_by_proof():
+    # The Van Winkle case: model misreads 45.2% as 45.9%, but reads the proof
+    # (90.4) correctly. The proof implies 45.2%, matching the application, so
+    # this is a likely misread -> review, not a hard mismatch.
+    r = verify.check_abv("45.2%", "Alc. 45.9% Vol. (90.4 Proof)")
+    assert r["status"] == REVIEW
+    assert "proof" in r["notes"][0].lower() and "misread" in r["notes"][0].lower()
+
+
+def test_abv_genuine_mismatch_with_matching_proof_still_fails():
+    # Both % and proof say 40 while the application says 45 — that's a real
+    # mismatch, not a misread, and must still fail.
+    r = verify.check_abv("45%", "40% Alc./Vol. (80 Proof)")
+    assert r["status"] == MISMATCH
+
+
 # --- net contents ----------------------------------------------------------------
 
 def test_volume_parsing_and_units():
@@ -211,6 +227,22 @@ def test_clean_label_passes():
 
 def test_one_mismatch_fails_the_label():
     result = verify.verify_label(APPLICATION, _extraction(alcohol_content="40% Alc./Vol."))
+    assert result["overall"] == "fail"
+
+
+def test_warning_not_found_is_review_not_fail():
+    # A front-of-bottle image: every field matches but the warning isn't
+    # visible (it's on the back). The tool can't conclude it's absent from the
+    # product, so this is review, not a hard fail.
+    result = verify.verify_label(APPLICATION, _extraction(government_warning=None))
+    assert result["overall"] == "review"
+
+
+def test_visible_wrong_warning_still_fails():
+    # A title-case warning IS visible and IS wrong — that's a real, observed
+    # violation and must still fail (Jenny's catch).
+    bad = govwarning.FULL_TEXT.replace("GOVERNMENT WARNING:", "Government Warning:")
+    result = verify.verify_label(APPLICATION, _extraction(government_warning=bad))
     assert result["overall"] == "fail"
 
 

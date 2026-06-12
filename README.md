@@ -29,10 +29,12 @@ Open http://127.0.0.1:8000. If you don't have a label image handy, click
 
 ## Using it
 
-**Check one label** — fill in the four application fields, drop in the label
-image, hit the button. You get an overall verdict (pass / needs review /
+**Check one label** — fill in the application fields (alcohol content is
+optional, since some wine and beer are exempt from stating it), drop in the
+label image, hit the button. You get an overall verdict (pass / needs review /
 problems found) plus a per-field breakdown showing what the application says
-next to what the label actually shows.
+next to what the label actually shows. A Haiku/Sonnet toggle lets you trade
+speed for accuracy per check.
 
 **Check a batch** — upload a CSV plus the label images it references. CSV
 columns:

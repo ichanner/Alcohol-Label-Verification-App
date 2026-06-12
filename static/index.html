@@ -57,6 +57,14 @@
           </div>
         </div>
 
+        <fieldset class="model-pick">
+          <legend>Reader model</legend>
+          <label><input type="radio" name="model" value="claude-haiku-4-5" checked>
+            Haiku — fast, good for clean artwork</label>
+          <label><input type="radio" name="model" value="claude-sonnet-4-6">
+            Sonnet — slower, best on rough photos</label>
+        </fieldset>
+
         <button type="submit" id="check-btn" class="primary">Check this label</button>
       </form>
 
@@ -79,6 +87,14 @@
 
         <label for="images-input">Label images (select all of them at once)</label>
         <input id="images-input" type="file" accept="image/png,image/jpeg,image/webp" multiple required>
+
+        <fieldset class="model-pick">
+          <legend>Reader model</legend>
+          <label><input type="radio" name="model" value="claude-haiku-4-5" checked>
+            Haiku — fast</label>
+          <label><input type="radio" name="model" value="claude-sonnet-4-6">
+            Sonnet — slower, more accurate (batch isn't time-critical)</label>
+        </fieldset>
 
         <button type="submit" id="batch-btn" class="primary">Run the batch</button>
       </form>

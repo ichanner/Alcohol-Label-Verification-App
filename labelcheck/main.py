@@ -48,7 +48,8 @@ def _audit(event: str, **fields):
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "model": extract.MODEL}
+    return {"ok": True, "model": extract.MODEL,
+            "models": extract.SELECTABLE_MODELS, "default_model": extract.MODEL}
 
 
 def _too_big(upload: UploadFile) -> HTTPException:
@@ -99,6 +100,7 @@ async def verify_single(
     class_type: str = Form(""),
     alcohol_content: str = Form(""),
     net_contents: str = Form(""),
+    model: str = Form(""),
 ):
     application = {
         "brand_name": brand_name,
@@ -106,10 +108,11 @@ async def verify_single(
         "alcohol_content": alcohol_content,
         "net_contents": net_contents,
     }
+    chosen = extract.resolve_model(model, extract.MODEL)
     rid = uuid.uuid4().hex[:12]
     data = await _read_image(image)
     try:
-        result = await _check_one(application, data)
+        result = await _check_one(application, data, model=chosen)
     except UnidentifiedImageError as e:
         _audit("verify.rejected", request_id=rid, image=image.filename, reason=_friendly(e))
         raise HTTPException(400, _friendly(e))
@@ -118,8 +121,9 @@ async def verify_single(
         raise HTTPException(502, _friendly(e))
 
     result["request_id"] = rid
+    result["model"] = chosen
     _audit("verify.decision", request_id=rid, image=image.filename,
-           model=extract.MODEL, overall=result["overall"],
+           model=chosen, overall=result["overall"],
            checks={c["field"]: c["status"] for c in result["checks"]},
            elapsed_s=result["elapsed_s"])
     return result
@@ -129,7 +133,9 @@ async def verify_single(
 async def verify_batch(
     applications: UploadFile = File(...),
     images: list[UploadFile] = File(...),
+    model: str = Form(""),
 ):
+    chosen = extract.resolve_model(model, extract.BATCH_MODEL)
     try:
         text = (await applications.read()).decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -167,14 +173,13 @@ async def verify_batch(
                     "error": "No uploaded image with this filename."}
         async with sem:
             try:
-                result = await _check_one(row, image_data[name],
-                                          model=extract.BATCH_MODEL)
+                result = await _check_one(row, image_data[name], model=chosen)
             except Exception as e:  # one bad row shouldn't sink the batch
                 _audit("verify.error", request_id=rid, batch_id=batch_id,
                        image=name, reason=_friendly(e))
                 return {**summary, "overall": "error", "error": _friendly(e)}
         _audit("verify.decision", request_id=rid, batch_id=batch_id, image=name,
-               model=extract.BATCH_MODEL, overall=result["overall"],
+               model=chosen, overall=result["overall"],
                checks={c["field"]: c["status"] for c in result["checks"]},
                elapsed_s=result["elapsed_s"])
         return {**summary, **result}
@@ -188,6 +193,7 @@ async def verify_batch(
     return {
         "results": results,
         "count": len(results),
+        "model": chosen,
         "elapsed_s": round(time.perf_counter() - started, 2),
     }
 

@@ -31,7 +31,14 @@ eye. What keeps this one fast:
 - One model call per label. No agent loop, no second pass.
 - Images get downscaled and re-encoded before upload (1600px long edge).
   Label text survives, payload and token count drop.
-- The UI prints elapsed time on every check so the ~5s promise stays visible.
+- The UI prints elapsed time (and which model ran) on every check so the ~5s
+  promise stays visible.
+
+The UI also has a Haiku/Sonnet toggle. Haiku is the default for the
+interactive check (speed); Sonnet is there for the rough images where the
+eval shows it's worth the extra latency (RESULTS.md). The selectable models
+are an allowlist on the server — a form value can't push an arbitrary model
+string through to the API.
 
 ## Hosted frontier model vs something local
 
@@ -75,10 +82,23 @@ binary:
 
 - Case-only differences (STONE'S THROW vs Stone's Throw) match, with a note.
   Same for curly vs straight apostrophes and unit rewrites (75 cL vs 750 mL).
-- Near matches (likely typo) go to review with a similarity score. A human
-  applies the judgment.
-- ABV compares numerically, so "45%" matches "45% Alc./Vol. (90 Proof)". If a
-  label's own proof contradicts its ABV, that gets flagged too.
+- A label that adds a qualifier the application leaves off ("Malt & Hop" vs
+  "Malt & Hop Brewery", "Ale" vs "Ale with Honey...") goes to review, not a
+  hard fail — whole-word containment, an agent's call.
+- Near matches (likely typo) go to review with a similarity score.
+- ABV compares numerically, so "45%" matches "45% Alc./Vol. (90 Proof)". The
+  label usually prints proof too (= 2x ABV), which gives a free second reading
+  of the same number: if the stated % is misread but the proof corroborates
+  the application, that's flagged as a likely misread rather than failed.
+
+The fail/review line matters: the tool **fails** a label only when it
+positively saw a conflict (label says X, application says Y). When it simply
+can't find a field in the image — very common, since a front-of-bottle photo
+doesn't show the warning or sometimes the net contents — that's **review**,
+not fail. "Not in this one image" isn't "absent from the product." This keeps
+the real catches sharp (a visibly wrong warning still fails) without
+false-failing every front-panel photo. Found this exact issue by running the
+whole real-label set through the app and watching all 19 fail on the warning.
 
 Nothing in the UI claims to approve an application. It recommends, the agent
 decides.

@@ -7,11 +7,13 @@ Four outcomes per field:
   match    - agrees with the application
   review   - probably fine but a human should look, e.g. STONE'S THROW on
              the label vs Stone's Throw on the form
-  mismatch - disagrees
-  missing  - not on the label at all
+  mismatch - the tool positively saw a conflict
+  missing  - couldn't find the field in this image
 
-A mismatch or missing anywhere fails the label, a review flags it,
-otherwise it passes.
+Only a mismatch fails the label — that's the one case where the tool saw a
+real conflict. A missing field (or any review) flags it for a human instead:
+"not found in one image" is not "absent from the product" — the warning, for
+one, usually sits on a back or side panel. Otherwise it passes.
 """
 
 from __future__ import annotations
@@ -53,7 +55,7 @@ def check_text(field: str, label: str, expected: str | None,
                        ["Application left this blank — nothing to compare against."])
     if not found or not found.strip():
         return _result(field, label, MISSING, expected, found,
-                       ["Not found on the label."])
+                       ["Not found in this image — check the other panels of the label."])
     e, f = _clean(expected), _clean(found)
     if e == f:
         return _result(field, label, MATCH, expected, found)
@@ -105,7 +107,7 @@ def check_abv(expected: str | None, found: str | None) -> dict:
     field, label = "alcohol_content", "Alcohol content"
     if not found or not found.strip():
         return _result(field, label, MISSING, expected, found,
-                       ["Not found on the label."])
+                       ["Not found in this image — check the other panels of the label."])
     want, got = parse_abv(expected), parse_abv(found)
     if not (expected or "").strip():
         # ABV is optional in the application — some wine and beer are exempt
@@ -120,19 +122,33 @@ def check_abv(expected: str | None, found: str | None) -> dict:
     if got is None:
         return _result(field, label, REVIEW, expected, found,
                        ["Couldn't read an ABV number off the label — check manually."])
+
+    # Labels usually print proof too, and proof is exactly 2x ABV. That makes
+    # it a free second reading of the same number — useful because a misread
+    # digit in tiny print is the model's most common error on hard images.
+    proof_raw = float(m.group(1)) if (m := _PROOF.search(found)) else None
+    proof_abv = proof_raw / 2 if proof_raw is not None else None
+
     if abs(want - got) > 0.001:
+        if proof_abv is not None and abs(proof_abv - want) <= 0.001:
+            # The stated % disagrees with the application, but the label's own
+            # proof implies the application's value. Both can't be right —
+            # most likely the % was misread. Flag for a human, don't fail.
+            return _result(field, label, REVIEW, expected, found,
+                           [f"The label's stated ABV ({got:g}%) doesn't match the "
+                            f"application ({want:g}%), but its proof ({proof_raw:g}) "
+                            f"implies {proof_abv:g}% — which does. The two disagree, "
+                            "likely a misread of the percentage. Check the image."])
         return _result(field, label, MISMATCH, expected, found,
                        [f"Application says {want:g}% but the label shows {got:g}%."])
 
+    # ABV matches the application. If the label's own proof disagrees with its
+    # stated ABV, that internal inconsistency is still worth a look.
     notes, status = [], MATCH
-    if m := _PROOF.search(found):
-        proof = float(m.group(1))
-        if abs(proof - got * 2) > 0.001:
-            # The label disagrees with itself and that's worth a look even
-            # though the ABV matches the application
-            status = REVIEW
-            notes.append(f"Label's proof ({proof:g}) doesn't agree with its own ABV "
-                         f"({got:g}% would be {got * 2:g} proof).")
+    if proof_abv is not None and abs(proof_abv - got) > 0.001:
+        status = REVIEW
+        notes.append(f"Label's proof ({proof_raw:g}) doesn't agree with its own ABV "
+                     f"({got:g}% would be {got * 2:g} proof).")
     return _result(field, label, status, expected, found, notes)
 
 
@@ -178,7 +194,7 @@ def check_net_contents(expected: str | None, found: str | None) -> dict:
     field, label = "net_contents", "Net contents"
     if not found or not found.strip():
         return _result(field, label, MISSING, expected, found,
-                       ["Not found on the label."])
+                       ["Not found in this image — check the other panels of the label."])
     want, got = parse_volume_ml(expected), parse_volume_ml(found)
     if want is None or got is None:
         # Couldn't make sense of one side as a volume so fall back to text
@@ -211,9 +227,15 @@ def verify_label(application: dict, extracted: dict) -> dict:
     ]
 
     statuses = {c["status"] for c in checks}
-    if MISMATCH in statuses or MISSING in statuses:
+    if MISMATCH in statuses:
+        # Fail only when the tool positively saw a conflict (label says one
+        # thing, the application another).
         overall = "fail"
-    elif REVIEW in statuses:
+    elif MISSING in statuses or REVIEW in statuses:
+        # Couldn't find a field, or a soft difference worth a human's eye.
+        # "Not found in one image" is not "absent from the product" — the
+        # warning in particular usually sits on a back or side panel — so a
+        # not-found is review, not an automatic fail.
         overall = "review"
     else:
         overall = "pass"

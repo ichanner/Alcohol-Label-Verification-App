@@ -21,6 +21,18 @@ MODEL = os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5")
 # batch runs aren't latency-bound the way the interactive check is, so they
 # can opt into a more accurate, slower tier (see eval/RESULTS.md for numbers)
 BATCH_MODEL = os.environ.get("BATCH_EXTRACTION_MODEL", MODEL)
+
+# Models a user may pick from the UI. An allowlist, so a form value can never
+# push an arbitrary model string through to the API. Order is display order.
+SELECTABLE_MODELS = {
+    "claude-haiku-4-5": "Haiku — fast (~3s)",
+    "claude-sonnet-4-6": "Sonnet — most accurate",
+}
+
+
+def resolve_model(requested: str | None, default: str) -> str:
+    """A requested model is honored only if it's on the allowlist."""
+    return requested if requested in SELECTABLE_MODELS else default
 MAX_EDGE = 1600   # bigger buys nothing for label text, costs upload + token time
 JPEG_QUALITY = 85
 
