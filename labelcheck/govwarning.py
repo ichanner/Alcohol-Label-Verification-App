@@ -1,10 +1,9 @@
-"""The federal health warning statement check (27 CFR Part 16).
+"""The health warning statement check (27 CFR Part 16).
 
-This is the one field where "close enough" doesn't exist. The wording is fixed
-by regulation, word for word, and the lead-in "GOVERNMENT WARNING" has to be
-capitalized and printed in bold type (the rest must NOT be bold). Agents
-reject labels over a title-case "Government Warning", so this check is
-deliberately strict where the others are forgiving.
+No fuzzy matching on this one. The wording is fixed by regulation word for
+word, and GOVERNMENT WARNING has to be capitalized and bold (the rest of
+the statement actually must NOT be bold, oddly). Agents reject labels over
+a title-case "Government Warning", so this check is strict on purpose.
 """
 
 import re
@@ -70,9 +69,11 @@ def check(found: str | None, prefix_bold: bool | None) -> dict:
         status = "mismatch"
         notes.append(_first_difference(BODY, body))
 
-    # Bold type is the one thing we can't verify reliably from a
-    # transcription, so it never auto-fails — worst case it sends the label
-    # to a human instead of quietly passing it.
+    '''
+    Bold type is the one thing we can't verify reliably from a
+    transcription, so it never auto-fails so worst case it sends the label
+    to a human instead of quietly passing it
+    '''
     if status == "match":
         if prefix_bold is False:
             status = "review"

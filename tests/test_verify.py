@@ -1,6 +1,6 @@
-"""Unit tests for the comparison logic. The cases mirror the discovery notes:
-Dave's STONE'S THROW capitalization story, Jenny's title-case warning catch,
-and the usual ABV / net contents paperwork mismatches."""
+"""Tests for the comparison logic. A lot of these come straight out of the
+discovery notes (the STONE'S THROW capitalization story, the title-case
+warning catch, etc)."""
 
 from labelcheck import govwarning, verify
 from labelcheck.verify import MATCH, MISMATCH, MISSING, REVIEW
@@ -82,6 +82,14 @@ def test_net_contents_same_volume_different_unit():
     r = verify.check_net_contents("750 mL", "75 cL")
     assert r["status"] == MATCH
     assert "Same volume" in r["notes"][0]
+
+
+def test_volume_pints_and_compound_quantities():
+    # the "1 PT. 0.9 FL. OZ." format on US beer bottles (~500 mL)
+    assert abs(verify.parse_volume_ml("1 PT. 0.9 FL. OZ.") - 499.8) < 0.5
+    assert abs(verify.parse_volume_ml("1 pint") - 473.2) < 0.1
+    r = verify.check_net_contents("500 mL", "1 PINT, 0.9 FL. OZ.")
+    assert r["status"] == MATCH
 
 
 def test_net_contents_mismatch():

@@ -1,16 +1,17 @@
-"""Compares what's on the application against what's printed on the label.
+"""Compares the application fields against what was read off the label.
 
-The model only transcribes (see extract.py); every pass/fail decision lives
-here in plain code, so an agent or an auditor can trace exactly why a label
-was flagged. Each check lands on one of four outcomes:
+The model only transcribes (extract.py). Everything that decides pass/fail
+is plain code in here, so you can always trace why a label got flagged.
 
-  match    — agrees with the application
-  review   — probably fine, but a human should glance at it
-             (e.g. "STONE'S THROW" on the label, "Stone's Throw" on the form)
-  mismatch — disagrees with the application
-  missing  — couldn't find the field on the label at all
+Four outcomes per field:
+  match    - agrees with the application
+  review   - probably fine but a human should look, e.g. STONE'S THROW on
+             the label vs Stone's Throw on the form
+  mismatch - disagrees
+  missing  - not on the label at all
 
-Any mismatch/missing fails the label; any review flags it; otherwise it passes.
+A mismatch or missing anywhere fails the label, a review flags it,
+otherwise it passes.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ REVIEW = "review"
 MISMATCH = "mismatch"
 MISSING = "missing"
 
-# Labels love decorative type — fold curly quotes into plain ones before comparing.
+# labels love decorative type, fold curly quotes into plain ones first
 _QUOTES = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"', "`": "'"})
 
 
@@ -33,7 +34,8 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text.translate(_QUOTES)).strip()
 
 
-def _result(field, label, status, expected, found, notes=None):
+def _result(field: str, label: str, status: str, expected, found,
+            notes: list[str] | None = None) -> dict:
     return {
         "field": field,
         "label": label,
@@ -44,7 +46,8 @@ def _result(field, label, status, expected, found, notes=None):
     }
 
 
-def check_text(field, label, expected, found, fuzzy=0.85):
+def check_text(field: str, label: str, expected: str | None,
+               found: str | None, fuzzy: float = 0.85) -> dict:
     if not expected or not expected.strip():
         return _result(field, label, REVIEW, expected, found,
                        ["Application left this blank — nothing to compare against."])
@@ -56,7 +59,7 @@ def check_text(field, label, expected, found, fuzzy=0.85):
         return _result(field, label, MATCH, expected, found)
     if e.casefold() == f.casefold():
         # Same words, different case. Agents treat these as the same thing,
-        # so we do too — but say so, rather than silently passing it.
+        # so we do too but say so, rather than silently passing it
         return _result(field, label, MATCH, expected, found,
                        ["Matches apart from capitalization."])
     ratio = SequenceMatcher(None, e.casefold(), f.casefold()).ratio()
@@ -68,7 +71,7 @@ def check_text(field, label, expected, found, fuzzy=0.85):
                    ["Doesn't match the application."])
 
 
-# --- alcohol content ---------------------------------------------------------
+# alcohol content
 
 _PCT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 _PROOF = re.compile(r"(\d+(?:\.\d+)?)\s*proof", re.IGNORECASE)
@@ -88,7 +91,7 @@ def parse_abv(text: str | None) -> float | None:
     return None
 
 
-def check_abv(expected, found):
+def check_abv(expected: str | None, found: str | None) -> dict:
     field, label = "alcohol_content", "Alcohol content"
     if not found or not found.strip():
         return _result(field, label, MISSING, expected, found,
@@ -108,15 +111,15 @@ def check_abv(expected, found):
     if m := _PROOF.search(found):
         proof = float(m.group(1))
         if abs(proof - got * 2) > 0.001:
-            # The label disagrees with itself — that's worth a look even
-            # though the ABV matches the application.
+            # The label disagrees with itself and that's worth a look even
+            # though the ABV matches the application
             status = REVIEW
             notes.append(f"Label's proof ({proof:g}) doesn't agree with its own ABV "
                          f"({got:g}% would be {got * 2:g} proof).")
     return _result(field, label, status, expected, found, notes)
 
 
-# --- net contents -------------------------------------------------------------
+# net contents
 
 _VOLUME = re.compile(
     r"(\d+(?:\.\d+)?)\s*"
@@ -132,10 +135,19 @@ _TO_ML = {
     "floz": 29.5735, "oz": 29.5735,
 }
 
+# beer loves compound imperial quantities like "1 PT. 0.9 FL. OZ."
+_PINT_COMPOUND = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:pts?|pints?)\b\.?[\s,]*"
+    r"(?:(\d+(?:\.\d+)?)\s*fl\.?\s*oz\.?)?",
+    re.IGNORECASE,
+)
+
 
 def parse_volume_ml(text: str | None) -> float | None:
     if not text:
         return None
+    if m := _PINT_COMPOUND.search(text):
+        return float(m.group(1)) * 473.176 + float(m.group(2) or 0) * 29.5735
     m = _VOLUME.search(text)
     if not m:
         return None
@@ -145,16 +157,16 @@ def parse_volume_ml(text: str | None) -> float | None:
     return qty * factor if factor else None
 
 
-def check_net_contents(expected, found):
+def check_net_contents(expected: str | None, found: str | None) -> dict:
     field, label = "net_contents", "Net contents"
     if not found or not found.strip():
         return _result(field, label, MISSING, expected, found,
                        ["Not found on the label."])
     want, got = parse_volume_ml(expected), parse_volume_ml(found)
     if want is None or got is None:
-        # Couldn't make sense of one side as a volume — fall back to text.
+        # Couldn't make sense of one side as a volume so fall back to text
         return check_text(field, label, expected, found)
-    if abs(want - got) <= 1:  # fl oz <-> mL conversions round a little
+    if abs(want - got) <= 1:  # fl oz to and from mL conversions round a little
         notes = []
         if _clean(expected).casefold() != _clean(found).casefold():
             notes.append(f'Same volume, written differently '
@@ -165,8 +177,7 @@ def check_net_contents(expected, found):
                     f"shows {found.strip()}."])
 
 
-# --- putting it together -------------------------------------------------------
-
+# putting it together
 def verify_label(application: dict, extracted: dict) -> dict:
     checks = [
         check_text("brand_name", "Brand name",
