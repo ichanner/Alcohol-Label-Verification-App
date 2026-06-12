@@ -1,10 +1,10 @@
-// Label Check front end. No framework — it's one page with two forms.
+// Label Check front end. No framework, it's one page with two forms.
 
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 
-// Tiny element builder so we never touch innerHTML with server data.
+// tiny element builder so server data never goes through innerHTML
 function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -45,7 +45,7 @@ $("tab-batch").addEventListener("click", () => showTab("batch"));
 
 /* ---------------- single label ---------------- */
 
-let labelFile = null; // the image we'll submit (from drop, browse, or the sample)
+let labelFile = null; // the image we'll submit, from drop/browse/sample
 
 const dropzone = $("dropzone");
 const fileInput = $("file-input");
@@ -77,7 +77,7 @@ dropzone.addEventListener("drop", (e) => {
   if (e.dataTransfer.files[0]) setImage(e.dataTransfer.files[0]);
 });
 
-// Loads the bundled Old Tom sample so people can try the tool in one click.
+// loads the bundled Old Tom sample so you can try the tool in one click
 $("load-example").addEventListener("click", async () => {
   try {
     const resp = await fetch("/samples/old-tom-correct.png");
