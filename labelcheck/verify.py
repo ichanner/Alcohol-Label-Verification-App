@@ -10,10 +10,12 @@ Four outcomes per field:
   mismatch - the tool positively saw a conflict
   missing  - couldn't find the field in this image
 
-Only a mismatch fails the label — that's the one case where the tool saw a
-real conflict. A missing field (or any review) flags it for a human instead:
-"not found in one image" is not "absent from the product" — the warning, for
-one, usually sits on a back or side panel. Otherwise it passes.
+A label fails on a mismatch (the tool saw a real conflict) or when the
+mandatory government warning is missing — the warning is required on every
+alcohol label, so its absence is always a problem to resolve. A non-warning
+field that's merely not found goes to review, not fail: "not in this one
+image" isn't "absent from the product" — brand or net contents can sit on
+another panel. Any review flags it for a human; otherwise it passes.
 """
 
 from __future__ import annotations
@@ -212,7 +214,7 @@ def check_net_contents(expected: str | None, found: str | None) -> dict:
 
 # putting it together
 def verify_label(application: dict, extracted: dict) -> dict:
-    checks = [
+    other_checks = [
         check_text("brand_name", "Brand name",
                    application.get("brand_name", ""), extracted.get("brand_name")),
         check_text("class_type", "Class / type",
@@ -222,20 +224,24 @@ def verify_label(application: dict, extracted: dict) -> dict:
                   extracted.get("alcohol_content")),
         check_net_contents(application.get("net_contents", ""),
                            extracted.get("net_contents")),
-        govwarning.check(extracted.get("government_warning"),
-                         extracted.get("warning_prefix_bold")),
     ]
+    warning = govwarning.check(extracted.get("government_warning"),
+                               extracted.get("warning_prefix_bold"))
+    checks = other_checks + [warning]
 
-    statuses = {c["status"] for c in checks}
-    if MISMATCH in statuses:
-        # Fail only when the tool positively saw a conflict (label says one
-        # thing, the application another).
+    all_statuses = {c["status"] for c in checks}
+    other_statuses = {c["status"] for c in other_checks}
+    # Fail on a positive conflict anywhere (label says X, application says Y),
+    # OR when the mandatory government warning is missing. The warning is
+    # required on every alcohol label, so its absence is a problem an agent
+    # must resolve — either the label is non-compliant, or this is a partial
+    # image and the agent needs the full artwork (their workflow today).
+    if MISMATCH in all_statuses or warning["status"] == MISSING:
         overall = "fail"
-    elif MISSING in statuses or REVIEW in statuses:
-        # Couldn't find a field, or a soft difference worth a human's eye.
-        # "Not found in one image" is not "absent from the product" — the
-        # warning in particular usually sits on a back or side panel — so a
-        # not-found is review, not an automatic fail.
+    # A non-warning field not found, or any soft difference, is a human's call.
+    # "Not in this one image" isn't "absent from the product" for brand/net —
+    # those can sit on another panel — so that's review, not an auto-fail.
+    elif MISSING in other_statuses or REVIEW in all_statuses:
         overall = "review"
     else:
         overall = "pass"

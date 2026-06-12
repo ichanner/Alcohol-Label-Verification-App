@@ -91,14 +91,18 @@ binary:
   of the same number: if the stated % is misread but the proof corroborates
   the application, that's flagged as a likely misread rather than failed.
 
-The fail/review line matters: the tool **fails** a label only when it
-positively saw a conflict (label says X, application says Y). When it simply
-can't find a field in the image — very common, since a front-of-bottle photo
-doesn't show the warning or sometimes the net contents — that's **review**,
-not fail. "Not in this one image" isn't "absent from the product." This keeps
-the real catches sharp (a visibly wrong warning still fails) without
-false-failing every front-panel photo. Found this exact issue by running the
-whole real-label set through the app and watching all 19 fail on the warning.
+The fail/review line: the tool **fails** a label when it positively saw a
+conflict (label says X, application says Y), or when the **mandatory
+government warning is missing** — the warning is required on every alcohol
+label, so its absence is always a problem an agent must resolve (the label is
+non-compliant, or it's a partial image and they need the full artwork, which
+is their workflow today). A *non-warning* field that's merely not found —
+common on a front-of-bottle photo where the net contents or class sits on
+another panel — goes to **review**, not fail, because "not in this one image"
+isn't "absent from the product." So a visibly wrong warning and a missing
+warning both fail (Jenny's checks stay sharp), while an ambiguous missing
+brand/net flags for a human instead of false-failing. Running the whole
+real-label set through the app is what surfaced where this line belonged.
 
 Nothing in the UI claims to approve an application. It recommends, the agent
 decides.

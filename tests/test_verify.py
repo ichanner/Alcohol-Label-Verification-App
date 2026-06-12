@@ -230,12 +230,11 @@ def test_one_mismatch_fails_the_label():
     assert result["overall"] == "fail"
 
 
-def test_warning_not_found_is_review_not_fail():
-    # A front-of-bottle image: every field matches but the warning isn't
-    # visible (it's on the back). The tool can't conclude it's absent from the
-    # product, so this is review, not a hard fail.
+def test_missing_warning_fails():
+    # The warning is mandatory on every alcohol label, so a missing one is
+    # always a problem to resolve — fail, not a soft review (Sarah/Jenny).
     result = verify.verify_label(APPLICATION, _extraction(government_warning=None))
-    assert result["overall"] == "review"
+    assert result["overall"] == "fail"
 
 
 def test_visible_wrong_warning_still_fails():
@@ -244,6 +243,13 @@ def test_visible_wrong_warning_still_fails():
     bad = govwarning.FULL_TEXT.replace("GOVERNMENT WARNING:", "Government Warning:")
     result = verify.verify_label(APPLICATION, _extraction(government_warning=bad))
     assert result["overall"] == "fail"
+
+
+def test_missing_non_warning_field_is_review_not_fail():
+    # Net contents not visible in the image, but everything else (including the
+    # warning) matches — net can be on another panel, so this is review.
+    result = verify.verify_label(APPLICATION, _extraction(net_contents=None))
+    assert result["overall"] == "review"
 
 
 def test_fuzzy_field_demotes_to_review():

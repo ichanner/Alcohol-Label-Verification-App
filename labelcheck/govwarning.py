@@ -44,8 +44,10 @@ def check(found: str | None, prefix_bold: bool | None) -> dict:
     }
     if not found or not found.strip():
         return {**base, "status": "missing",
-                "notes": ["No government warning found in this image — confirm it "
-                          "appears on the label (it's often on a back or side panel)."]}
+                "notes": ["No government warning found in this image. It's mandatory "
+                          "on every alcohol label — if this is a front-panel photo, "
+                          "supply the full label (the warning is usually on the back). "
+                          "A label with no warning anywhere is non-compliant."]}
 
     text = _squash(found)
     notes = []
