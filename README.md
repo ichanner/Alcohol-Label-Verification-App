@@ -111,4 +111,5 @@ tests/               unit tests for the comparison logic
 ```
 
 Design decisions, assumptions and known limitations are written up in
-[docs/NOTES.md](docs/NOTES.md).
+[docs/NOTES.md](docs/NOTES.md); the upload/prompt-injection threat model is in
+[docs/SECURITY.md](docs/SECURITY.md).

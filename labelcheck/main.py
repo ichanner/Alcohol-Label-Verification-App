@@ -51,13 +51,21 @@ async def health():
     return {"ok": True, "model": extract.MODEL}
 
 
+def _too_big(upload: UploadFile) -> HTTPException:
+    return HTTPException(400, f"{upload.filename or 'image'} is over the "
+                              f"{MAX_UPLOAD // 2**20} MB limit.")
+
+
 async def _read_image(upload: UploadFile) -> bytes:
+    # Reject on the declared size before reading, so a multi-GB upload can't
+    # exhaust memory before the length check fires.
+    if upload.size is not None and upload.size > MAX_UPLOAD:
+        raise _too_big(upload)
     data = await upload.read()
     if not data:
         raise HTTPException(400, f"{upload.filename or 'image'} is empty.")
-    if len(data) > MAX_UPLOAD:
-        raise HTTPException(400, f"{upload.filename} is over the "
-                                 f"{MAX_UPLOAD // 2**20} MB limit.")
+    if len(data) > MAX_UPLOAD:  # backstop if size wasn't declared
+        raise _too_big(upload)
     return data
 
 
