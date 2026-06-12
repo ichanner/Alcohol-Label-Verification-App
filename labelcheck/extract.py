@@ -1,12 +1,12 @@
-"""Reads a label image with Claude and hands back the fields, verbatim.
+"""Reads a label image with Claude and returns the fields verbatim.
 
-The model is used strictly as a transcriber — it never decides whether a
-label passes. That keeps every decision explainable (see verify.py) and keeps
-the call fast: one round trip per label, structured JSON out.
+The model is just a transcriber here, it never decides whether a label
+passes. All the actual pass/fail logic lives in verify.py where it can be
+tested. One API call per label, structured JSON back.
 
-Haiku is the default model because the brief was blunt about speed — agents
-abandoned the last tool at 30-40s per label, and anything past ~5s is dead on
-arrival. Set EXTRACTION_MODEL if you ever want to trade speed for accuracy.
+Defaulting to haiku since speed was the whole point of this thing (the old
+scanner took 30+ seconds per label and everyone went back to checking by
+eye). EXTRACTION_MODEL swaps the model if accuracy ever matters more.
 """
 
 import base64
@@ -15,10 +15,13 @@ import json
 import os
 
 import anthropic
-from PIL import Image
+from PIL import Image, ImageOps
 
 MODEL = os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5")
-MAX_EDGE = 1600   # px — bigger buys nothing for label text, costs upload + token time
+# batch runs aren't latency-bound the way the interactive check is, so they
+# can opt into a more accurate, slower tier (see eval/RESULTS.md for numbers)
+BATCH_MODEL = os.environ.get("BATCH_EXTRACTION_MODEL", MODEL)
+MAX_EDGE = 1600   # bigger buys nothing for label text, costs upload + token time
 JPEG_QUALITY = 85
 
 SCHEMA = {
@@ -57,7 +60,8 @@ SCHEMA = {
         },
         "legibility_notes": {
             "type": ["string", "null"],
-            "description": "Anything making the label hard to read: glare, blur, angle, crop.",
+            "description": "One short sentence on what makes the label hard to read "
+                           "(glare, blur, angle, crop), or null if nothing does.",
         },
     },
     "required": ["brand_name", "class_type", "alcohol_content", "net_contents",
@@ -99,6 +103,8 @@ def _get_client() -> anthropic.AsyncAnthropic:
 def _prep_image(data: bytes) -> str:
     """Downscale and re-encode as JPEG so the API call stays quick."""
     img = Image.open(io.BytesIO(data))
+    # phone photos arrive sideways unless you apply the EXIF orientation
+    img = ImageOps.exif_transpose(img)
     if img.mode != "RGB":
         img = img.convert("RGB")
     if max(img.size) > MAX_EDGE:
@@ -108,10 +114,10 @@ def _prep_image(data: bytes) -> str:
     return base64.standard_b64encode(out.getvalue()).decode("ascii")
 
 
-async def extract_fields(image_bytes: bytes) -> dict:
-    image_b64 = _prep_image(image_bytes)  # validate the image before anything else
+async def extract_fields(image_bytes: bytes, model: str | None = None) -> dict:
+    image_b64 = _prep_image(image_bytes)  # bad uploads should fail before we call the API
     message = await _get_client().messages.create(
-        model=MODEL,
+        model=model or MODEL,
         max_tokens=1024,
         system=SYSTEM,
         messages=[{
@@ -130,6 +136,6 @@ async def extract_fields(image_bytes: bytes) -> dict:
         }],
         output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
     )
-    # With a structured output format the first content block is guaranteed
-    # to be text containing valid JSON for our schema.
+    # with a structured output format the first content block is guaranteed
+    # to be text containing valid JSON for our schema
     return json.loads(message.content[0].text)
