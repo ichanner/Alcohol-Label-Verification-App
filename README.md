@@ -85,6 +85,10 @@ There's also a small eval against photos of real commercial labels (this one
 does need an API key): `python scripts/eval_real_labels.py --fetch` downloads
 the images from Wikimedia Commons, then run it again without the flag to
 score. Method and results are written up in [docs/NOTES.md](docs/NOTES.md).
+`python scripts/edge_battery.py` runs a third layer: synthetic labels
+exercising the hard parsing paths (EU decimal commas, fractional pints,
+country aliases, abbreviations, a sulfite line beside the warning) end to end
+through the real extractor and verifier.
 
 ## Deploying
 
