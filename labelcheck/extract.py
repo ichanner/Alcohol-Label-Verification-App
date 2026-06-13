@@ -55,6 +55,17 @@ SCHEMA = {
             "type": ["string", "null"],
             "description": "Net contents exactly as printed, e.g. '750 mL'.",
         },
+        "producer_name_address": {
+            "type": ["string", "null"],
+            "description": "The bottler/producer/importer name-and-address statement "
+                           "as printed, e.g. 'Distilled and Bottled by Old Tom "
+                           "Distillery Co., Bardstown, KY'.",
+        },
+        "country_of_origin": {
+            "type": ["string", "null"],
+            "description": "Country-of-origin statement if printed, e.g. "
+                           "'Product of France'. Null if the label states none.",
+        },
         "government_warning": {
             "type": ["string", "null"],
             "description": "The complete government warning statement, transcribed "
@@ -77,6 +88,7 @@ SCHEMA = {
         },
     },
     "required": ["brand_name", "class_type", "alcohol_content", "net_contents",
+                 "producer_name_address", "country_of_origin",
                  "government_warning", "warning_prefix_bold", "legibility",
                  "legibility_notes"],
     "additionalProperties": False,

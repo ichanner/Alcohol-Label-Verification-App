@@ -72,7 +72,16 @@ def _result(field: str, label: str, status: str, expected, found,
 
 
 def check_text(field: str, label: str, expected: str | None,
-               found: str | None, fuzzy: float = 0.85) -> dict:
+               found: str | None, fuzzy: float = 0.75) -> dict:
+    """Compare two strings on a ladder from provably-same to confidently-different.
+
+    match     - identical after minimal normalization (case noted if it's the
+                only difference)
+    review    - plausibly the same thing: same words reordered, one side adds
+                qualifier words, or high similarity (typos, abbreviations like
+                "Co." vs "Company"). A human confirms; never a silent match.
+    mismatch  - similarity below the floor: confidently different text.
+    """
     if not expected or not expected.strip():
         return _result(field, label, REVIEW, expected, found,
                        ["Application left this blank — nothing to compare against."])
@@ -87,17 +96,19 @@ def check_text(field: str, label: str, expected: str | None,
         # so we do too but say so, rather than silently passing it
         return _result(field, label, MATCH, expected, found,
                        ["Matches apart from capitalization."])
-    ce, cf = e.casefold(), f.casefold()
-    if f" {ce} " in f" {cf} " or f" {cf} " in f" {ce} ":
-        # One fully contains the other as whole words: the label states the
-        # same thing with an added qualifier ("Malt & Hop" vs "Malt & Hop
-        # Brewery", "Ale" vs "Ale with Honey..."). That's a judgment call for
-        # an agent, not a hard mismatch. (Padding with spaces keeps it to
-        # whole words, so "Ale" doesn't match inside "Pale".)
+    te, tf = e.casefold().split(), f.casefold().split()
+    if sorted(te) == sorted(tf):
+        return _result(field, label, REVIEW, expected, found,
+                       ["Same words in a different order — confirm they refer "
+                        "to the same thing."])
+    if set(te) <= set(tf) or set(tf) <= set(te):
+        # One side's words all appear in the other: the same thing with an
+        # added qualifier ("Malt & Hop" vs "Malt & Hop Brewery", "Ale" vs
+        # "Ale with Honey..."). A judgment call for an agent, not a hard fail.
         return _result(field, label, REVIEW, expected, found,
                        ["The label and application agree but one adds extra "
                         "words — confirm they refer to the same thing."])
-    ratio = SequenceMatcher(None, ce, cf).ratio()
+    ratio = SequenceMatcher(None, e.casefold(), f.casefold()).ratio()
     if ratio >= fuzzy:
         return _result(field, label, REVIEW, expected, found,
                        [f"Close but not identical ({ratio:.0%} similar) — "
@@ -284,19 +295,72 @@ def check_net_contents(expected: str | None, found: str | None) -> dict:
                     f"shows {found.strip()}."])
 
 
+# country of origin
+#
+# Labels state it as a phrase ("Product of France", "Made in Mexico"); the
+# application usually just names the country. Fold the boilerplate so those
+# match, then fall back to the ordinary text comparison.
+
+_ORIGIN_BOILERPLATE = re.compile(
+    r"^(?:(?:a\s+)?produc[et]\s+of|made\s+in|imported\s+from|bottled\s+in)\s+"
+    r"(?:the\s+)?",
+    re.IGNORECASE)
+
+# the same country under different names must not read as a conflict
+_COUNTRY_ALIASES = {
+    "usa": "united states", "us": "united states", "u s": "united states",
+    "united states of america": "united states", "america": "united states",
+    "uk": "united kingdom", "great britain": "united kingdom",
+    "britain": "united kingdom",
+}
+
+
+def _origin_key(text: str) -> str:
+    folded = _ORIGIN_BOILERPLATE.sub("", _clean(text)).strip().casefold()
+    return _COUNTRY_ALIASES.get(folded, folded)
+
+
+def check_origin(expected: str | None, found: str | None) -> dict:
+    field, label = "country_of_origin", "Country of origin"
+    if not found or not found.strip():
+        return _result(field, label, MISSING, expected, found,
+                       ["No country of origin found in this image — it's mandatory "
+                        "for imports, check the other panels of the label."])
+    e, f = _origin_key(expected), _origin_key(found)
+    if e == f:
+        notes = ([] if _clean(expected).casefold() == _clean(found).casefold()
+                 else [f'Same country, worded differently ("{found.strip()}" '
+                       f'vs "{expected.strip()}").'])
+        return _result(field, label, MATCH, expected, found, notes)
+    return check_text(field, label, expected, found)
+
+
 # putting it together
 def verify_label(application: dict, extracted: dict) -> dict:
     other_checks = [
         check_text("brand_name", "Brand name",
                    application.get("brand_name", ""), extracted.get("brand_name")),
         check_text("class_type", "Class / type",
-                   application.get("class_type", ""), extracted.get("class_type"),
-                   fuzzy=0.8),
+                   application.get("class_type", ""), extracted.get("class_type")),
         check_abv(application.get("alcohol_content", ""),
                   extracted.get("alcohol_content")),
         check_net_contents(application.get("net_contents", ""),
                            extracted.get("net_contents")),
     ]
+    # Name/address and country of origin are checked only when the application
+    # states them. Origin only exists for imports, and neither is on the
+    # standard form here, so a blank means "not part of this application" —
+    # skipping it (rather than flagging review like a blank mandatory field)
+    # keeps a four-field application's verdict unchanged.
+    if (application.get("producer_name_address") or "").strip():
+        other_checks.append(check_text(
+            "producer_name_address", "Name & address",
+            application["producer_name_address"],
+            extracted.get("producer_name_address")))
+    if (application.get("country_of_origin") or "").strip():
+        other_checks.append(check_origin(
+            application["country_of_origin"],
+            extracted.get("country_of_origin")))
     warning = govwarning.check(extracted.get("government_warning"),
                                extracted.get("warning_prefix_bold"))
     checks = other_checks + [warning]

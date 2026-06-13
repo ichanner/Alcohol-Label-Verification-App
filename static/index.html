@@ -41,6 +41,17 @@
             <label for="net_contents">Net contents</label>
             <input id="net_contents" name="net_contents" required
                    placeholder="750 mL" autocomplete="off">
+
+            <label for="producer_name_address">Name &amp; address of bottler/producer
+              <span class="opt">— optional</span></label>
+            <input id="producer_name_address" name="producer_name_address"
+                   placeholder="Distilled and Bottled by Old Tom Distillery Co., Bardstown, KY"
+                   autocomplete="off">
+
+            <label for="country_of_origin">Country of origin
+              <span class="opt">— optional, imports only</span></label>
+            <input id="country_of_origin" name="country_of_origin"
+                   placeholder="Product of France" autocomplete="off">
           </div>
 
           <div class="col">
@@ -63,6 +74,9 @@
             Haiku — fast, good for clean artwork</label>
           <label><input type="radio" name="model" value="claude-sonnet-4-6">
             Sonnet — slower, best on rough photos</label>
+          <p class="hint">Clean print-ready artwork checks in a few seconds.
+            Photos with glare, blur or odd angles take longer — Sonnet is the
+            better pick for those.</p>
         </fieldset>
 
         <button type="submit" id="check-btn" class="primary">Check this label</button>
@@ -80,7 +94,10 @@
           The CSV needs these columns:
           <code>image, brand_name, class_type, alcohol_content, net_contents</code>
           — where <code>image</code> is the filename of the matching upload.
-          There's a ready-made example in the <code>samples/</code> folder of the repo.</p>
+          Optional columns: <code>producer_name_address, country_of_origin</code>
+          (checked only where filled in). Results appear row by row as each
+          label finishes. There's a ready-made example in the
+          <code>samples/</code> folder of the repo.</p>
 
         <label for="csv-input">Application CSV</label>
         <input id="csv-input" type="file" accept=".csv,text/csv" required>

@@ -16,6 +16,7 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import UnidentifiedImageError
 
@@ -100,6 +101,8 @@ async def verify_single(
     class_type: str = Form(""),
     alcohol_content: str = Form(""),
     net_contents: str = Form(""),
+    producer_name_address: str = Form(""),
+    country_of_origin: str = Form(""),
     model: str = Form(""),
 ):
     application = {
@@ -107,6 +110,8 @@ async def verify_single(
         "class_type": class_type,
         "alcohol_content": alcohol_content,
         "net_contents": net_contents,
+        "producer_name_address": producer_name_address,
+        "country_of_origin": country_of_origin,
     }
     chosen = extract.resolve_model(model, extract.MODEL)
     rid = uuid.uuid4().hex[:12]
@@ -161,11 +166,11 @@ async def verify_batch(
 
     batch_id = uuid.uuid4().hex[:12]
 
-    async def run_row(row: dict) -> dict:
+    async def run_row(index: int, row: dict) -> dict:
         name = (row.get("image") or "").strip()
         rid = uuid.uuid4().hex[:12]
-        summary = {"image": name, "brand_name": row.get("brand_name", ""),
-                   "request_id": rid}
+        summary = {"row": index, "image": name,
+                   "brand_name": row.get("brand_name", ""), "request_id": rid}
         if name not in image_data:
             _audit("verify.rejected", request_id=rid, batch_id=batch_id,
                    image=name, reason="no uploaded image with this filename")
@@ -184,18 +189,33 @@ async def verify_batch(
                elapsed_s=result["elapsed_s"])
         return {**summary, **result}
 
-    results = await asyncio.gather(*(run_row(r) for r in rows))
-    counts: dict[str, int] = {}
-    for r in results:
-        counts[r["overall"]] = counts.get(r["overall"], 0) + 1
-    _audit("batch.done", batch_id=batch_id, rows=len(results), outcomes=counts,
-           elapsed_s=round(time.perf_counter() - started, 2))
-    return {
-        "results": results,
-        "count": len(results),
-        "model": chosen,
-        "elapsed_s": round(time.perf_counter() - started, 2),
-    }
+    # Results stream back one NDJSON line per label as each finishes, so an
+    # agent watching a 300-label dump sees failures immediately instead of
+    # staring at a spinner for minutes.
+    async def stream():
+        yield json.dumps({"type": "start", "count": len(rows),
+                          "model": chosen}, ensure_ascii=False) + "\n"
+        tasks = [asyncio.create_task(run_row(i, r))
+                 for i, r in enumerate(rows, 1)]
+        counts: dict[str, int] = {}
+        try:
+            for fut in asyncio.as_completed(tasks):
+                r = await fut
+                counts[r["overall"]] = counts.get(r["overall"], 0) + 1
+                yield json.dumps({"type": "result", **r},
+                                 ensure_ascii=False) + "\n"
+        finally:
+            # client gone mid-batch: stop burning API calls on the rest
+            for t in tasks:
+                t.cancel()
+        elapsed = round(time.perf_counter() - started, 2)
+        _audit("batch.done", batch_id=batch_id, rows=len(rows),
+               outcomes=counts, elapsed_s=elapsed)
+        yield json.dumps({"type": "done", "count": len(rows), "outcomes": counts,
+                          "model": chosen, "elapsed_s": elapsed},
+                         ensure_ascii=False) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 # Static front end + bundled sample labels. Mounted last so /api/* wins

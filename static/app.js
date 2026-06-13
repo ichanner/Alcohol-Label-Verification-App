@@ -94,6 +94,9 @@ $("load-example").addEventListener("click", async () => {
     $("class_type").value = "Kentucky Straight Bourbon Whiskey";
     $("alcohol_content").value = "45%";
     $("net_contents").value = "750 mL";
+    $("producer_name_address").value =
+      "Distilled and Bottled by Old Tom Distillery Co., Bardstown, KY";
+    $("country_of_origin").value = ""; // domestic — optional field stays blank
   } catch {
     setStatus($("single-status"), "Couldn't load the sample image.", true);
   }
@@ -193,19 +196,21 @@ $("batch-form").addEventListener("submit", async (e) => {
   const form = new FormData();
   form.append("applications", csv);
   for (const img of images) form.append("images", img);
+  const picked = document.querySelector('#batch-form input[name="model"]:checked');
+  if (picked) form.append("model", picked.value);
 
   const btn = $("batch-btn");
   btn.disabled = true;
-  setStatus($("batch-status"),
-    `Checking ${images.length} label${images.length === 1 ? "" : "s"}… ` +
-    "this runs a handful at a time, so larger batches take a few minutes.");
+  setStatus($("batch-status"), "Uploading…");
 
   try {
     const resp = await fetch("/api/verify-batch", { method: "POST", body: form });
-    const body = await resp.json();
-    if (!resp.ok) throw new Error(body.detail || "Something went wrong.");
+    if (!resp.ok) {
+      const body = await resp.json();
+      throw new Error(body.detail || "Something went wrong.");
+    }
+    await readBatchStream(resp, resultBox);
     setStatus($("batch-status"), "");
-    renderBatch(resultBox, body);
   } catch (err) {
     setStatus($("batch-status"), err.message, true);
   } finally {
@@ -213,48 +218,89 @@ $("batch-form").addEventListener("submit", async (e) => {
   }
 });
 
+// The server streams one NDJSON line per label as it finishes, so the table
+// fills in live and an agent can start on failures while the rest run.
+async function readBatchStream(resp, box) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (line) handleBatchEvent(JSON.parse(line), box);
+    }
+    if (done) break;
+  }
+}
+
 const CHIP_TEXT = { pass: "Pass", review: "Review", fail: "Fail", error: "Error" };
 const CHIP_TONE = { pass: "ok", review: "warn", fail: "bad", error: "bad" };
 
-function renderBatch(box, body) {
-  const counts = { pass: 0, review: 0, fail: 0, error: 0 };
-  for (const r of body.results) counts[r.overall] = (counts[r.overall] || 0) + 1;
+let batchView = null; // progressive render state for the in-flight batch
 
-  box.append(h("div", { class: `banner ${counts.fail || counts.error ? "bad" : counts.review ? "warn" : "ok"}` },
-    `${body.count} labels checked — ${counts.pass} pass, ${counts.review} need review, ` +
-    `${counts.fail} fail${counts.error ? `, ${counts.error} errored` : ""}`,
-    h("small", {}, `Finished in ${body.elapsed_s}s${body.model ? " · " + modelLabel(body.model) : ""}.`)));
+function summaryLine(c) {
+  return `${c.pass || 0} pass, ${c.review || 0} need review, ${c.fail || 0} fail` +
+    (c.error ? `, ${c.error} errored` : "");
+}
 
-  const table = h("table", {},
-    h("thead", {}, h("tr", {},
-      h("th", {}, "Image"), h("th", {}, "Brand"), h("th", {}, "Result"),
-      h("th", {}, "Details"), h("th", {}, "Time"))));
-  const tbody = h("tbody", {});
-
-  for (const r of body.results) {
-    const details = h("td", {});
-    if (r.error) {
-      details.append(r.error);
-    } else {
-      const problems = (r.checks || []).filter((c) => c.status !== "match");
-      if (!problems.length) details.append("All fields match.");
-      for (const p of problems) {
-        details.append(h("p", { class: "why" },
-          `${MARKS[p.status]} ${p.label}: ${(p.notes && p.notes[0]) || p.status}`));
-      }
-      for (const note of r.notes || []) {
-        details.append(h("p", { class: "why" }, "⚠ " + note));
-      }
-    }
-    tbody.append(h("tr", {},
-      h("td", {}, r.image || "—"),
-      h("td", {}, r.brand_name || "—"),
-      h("td", {}, h("span", { class: `chip ${CHIP_TONE[r.overall] || "bad"}` },
-        CHIP_TEXT[r.overall] || r.overall)),
-      details,
-      h("td", {}, r.elapsed_s != null ? `${r.elapsed_s}s` : "—")));
+function handleBatchEvent(ev, box) {
+  if (ev.type === "start") {
+    const banner = h("div", { class: "banner warn" },
+      `Checking ${ev.count} label${ev.count === 1 ? "" : "s"}…`,
+      h("small", {}, "Results appear as each label finishes."));
+    const tbody = h("tbody", {});
+    const table = h("table", {},
+      h("thead", {}, h("tr", {},
+        h("th", {}, "Image"), h("th", {}, "Brand"), h("th", {}, "Result"),
+        h("th", {}, "Details"), h("th", {}, "Time"))),
+      tbody);
+    box.replaceChildren(banner, table);
+    box.hidden = false;
+    batchView = { banner, tbody, total: ev.count, seen: 0,
+                  counts: { pass: 0, review: 0, fail: 0, error: 0 } };
+  } else if (ev.type === "result" && batchView) {
+    batchView.seen += 1;
+    batchView.counts[ev.overall] = (batchView.counts[ev.overall] || 0) + 1;
+    batchView.tbody.append(batchRow(ev));
+    batchView.banner.replaceChildren(
+      `Checked ${batchView.seen} of ${batchView.total}…`,
+      h("small", {}, summaryLine(batchView.counts)));
+  } else if (ev.type === "done" && batchView) {
+    const c = batchView.counts;
+    batchView.banner.className =
+      `banner ${c.fail || c.error ? "bad" : c.review ? "warn" : "ok"}`;
+    batchView.banner.replaceChildren(
+      `${ev.count} labels checked — ${summaryLine(c)}`,
+      h("small", {}, `Finished in ${ev.elapsed_s}s` +
+        `${ev.model ? " · " + modelLabel(ev.model) : ""}.`));
+    batchView = null;
   }
-  table.append(tbody);
-  box.append(table);
-  box.hidden = false;
+}
+
+function batchRow(r) {
+  const details = h("td", {});
+  if (r.error) {
+    details.append(r.error);
+  } else {
+    const problems = (r.checks || []).filter((c) => c.status !== "match");
+    if (!problems.length) details.append("All fields match.");
+    for (const p of problems) {
+      details.append(h("p", { class: "why" },
+        `${MARKS[p.status]} ${p.label}: ${(p.notes && p.notes[0]) || p.status}`));
+    }
+    for (const note of r.notes || []) {
+      details.append(h("p", { class: "why" }, "⚠ " + note));
+    }
+  }
+  return h("tr", {},
+    h("td", {}, r.image || "—"),
+    h("td", {}, r.brand_name || "—"),
+    h("td", {}, h("span", { class: `chip ${CHIP_TONE[r.overall] || "bad"}` },
+      CHIP_TEXT[r.overall] || r.overall)),
+    details,
+    h("td", {}, r.elapsed_s != null ? `${r.elapsed_s}s` : "—"));
 }

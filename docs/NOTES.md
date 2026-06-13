@@ -85,10 +85,16 @@ binary:
   including import notations — the EU decimal comma ("0,7 L", "5,0% vol") and
   fractional pints ("1/2 PINT", "½ PINT") read as the volumes they are, not as
   thousands separators or bare digits.
-- A label that adds a qualifier the application leaves off ("Malt & Hop" vs
-  "Malt & Hop Brewery", "Ale" vs "Ale with Honey...") goes to review, not a
-  hard fail — whole-word containment, an agent's call.
-- Near matches (likely typo) go to review with a similarity score.
+- Everything else runs down a comparison ladder: **match** only when the text
+  is provably the same after minimal normalization; **review** when it's
+  plausibly the same — the same words reordered, one side adding qualifier
+  words ("Malt & Hop" vs "Malt & Hop Brewery"), or high similarity (typos,
+  abbreviations like "Smith Co." vs "Smith Company", "Aged Eight Years" vs
+  "Aged 8 Years"); **mismatch** only when the text is confidently different.
+  The deliberate trade: ambiguity always costs a human glance, never a silent
+  pass and never a false fail — the two failure modes that kill trust in the
+  tool. No synonym dictionaries to maintain, and the model is never asked to
+  judge equivalence.
 - ABV compares numerically, so "45%" matches "45% Alc./Vol. (90 Proof)". The
   label usually prints proof too (= 2x ABV), which gives a free second reading
   of the same number: if the stated % is misread but the proof corroborates
@@ -112,11 +118,16 @@ decides.
 
 ## Batch mode
 
-CSV + images in one upload, results in one table. Extraction calls run
-concurrently but capped at 6 so a 300-label dump doesn't become 300
-simultaneous API calls. A row that errors reports itself, the rest carry on.
-~300 labels works out to a few minutes of wall time instead of a day of agent
-time.
+CSV + images in one upload. Extraction calls run concurrently but capped at 6
+so a 300-label dump doesn't become 300 simultaneous API calls. A row that
+errors reports itself, the rest carry on. ~300 labels works out to a few
+minutes of wall time instead of a day of agent time.
+
+Results stream back as NDJSON, one line per label as it finishes, and the
+table fills in live with a running count — an agent can start working the
+failures immediately instead of watching a spinner for minutes. If the agent
+closes the tab mid-batch, the server cancels the remaining extraction calls
+rather than burning API spend on results nobody will see.
 
 ## Imperfect images
 
@@ -236,8 +247,12 @@ eval before any model or prompt change ships.
 - Application data arrives as typed fields. It would come from COLA in real
   life, here it's the form or a CSV. No COLA integration, per Marcus.
 - Distilled-spirits labels are the reference case, matching the brief. The
-  five checks are the common denominator, commodity-specific rules are out of
-  scope (below).
+  five core checks are the common denominator; the bottler's name & address
+  and country of origin are checked as *optional* fields — compared when the
+  application states them, skipped when it doesn't. Optional is the correct
+  model, not a shortcut: origin only exists for imports, and a blank optional
+  field means "not part of this application", not "needs review". The deeper
+  commodity-specific rules stay out of scope (below).
 - One image per application. Front + back would need a small extension.
 - No persistence, no auth. Fine for a prototype, revisit for production.
 - Quantities are numeric. Real labels and COLA applications state ABV and net
@@ -258,18 +273,18 @@ eval before any model or prompt change ships.
 - ABV tolerance rules aren't modeled. TTB allows small tolerances for some
   commodities; this expects the form and label to state the same number,
   which is the conservative reading.
-- Commodity-specific requirements (sulfites, country of origin, name and
-  address rules, type size minimums) are out of scope. Type size needs
-  physical dimensions a photo doesn't give you.
-- Batch results arrive all at once. For 300-label batches a progress stream
-  is the first UX improvement.
+- Name & address and country of origin are plain text comparisons with the
+  same review tier as the other fields ("USA" = "Product of the United
+  States", but "KY" vs "Kentucky" routes to review, not match). The deeper
+  TTB rules — trade-name allowances, sulfite declarations, type size
+  minimums — are out of scope; type size needs physical dimensions a photo
+  doesn't give you.
 
 ## Next
 
-1. Scale the eval from n=14 to a few hundred real COLA images. That number
+1. Scale the eval from n=19 to a few hundred real COLA images. That number
    decides how much the tool can be trusted.
-2. Stream batch results so agents can start on failures immediately.
-3. Front + back label images per application.
-4. Per-commodity rule packs (wine/beer/spirits) on the same transcription.
-5. A "disagree" button recording agent overrides, both for trust and as the
+2. Front + back label images per application.
+3. Per-commodity rule packs (wine/beer/spirits) on the same transcription.
+4. A "disagree" button recording agent overrides, both for trust and as the
    seed of a bigger eval set.

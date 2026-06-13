@@ -65,6 +65,25 @@ def test_brand_typo_needs_review():
     assert r["status"] == REVIEW
 
 
+def test_same_words_reordered_is_review_not_fail():
+    r = verify.check_text("class_type", "Class",
+                          "Straight Bourbon Whiskey", "Bourbon Whiskey, Straight")
+    assert r["status"] == REVIEW
+    assert "order" in r["notes"][0]
+
+
+def test_abbreviation_is_review_not_fail():
+    # "Smith Co." and "Smith Company" are plausibly the same producer — an
+    # agent's call, never a hard fail (it used to be one).
+    r = verify.check_text("brand_name", "Brand", "Smith Co.", "Smith Company")
+    assert r["status"] == REVIEW
+
+
+def test_spelled_out_number_is_review_not_fail():
+    r = verify.check_text("class_type", "Class", "Aged 8 Years", "Aged Eight Years")
+    assert r["status"] == REVIEW
+
+
 def test_brand_different_name_is_mismatch():
     r = verify.check_text("brand_name", "Brand", "OLD TOM DISTILLERY", "RIVERBEND GIN CO")
     assert r["status"] == MISMATCH
@@ -275,6 +294,32 @@ def test_net_contents_floz_rounding_matches():
     assert verify.check_net_contents("750 mL", "720 mL")["status"] == MISMATCH
 
 
+# --- country of origin -------------------------------------------------------------
+
+def test_origin_boilerplate_folds_to_match():
+    # Applications name the country; labels phrase it. Same country = match.
+    assert verify.check_origin("France", "Product of France")["status"] == MATCH
+    assert verify.check_origin("Product of France", "PRODUCT OF FRANCE")["status"] == MATCH
+    assert verify.check_origin("Mexico", "Made in Mexico")["status"] == MATCH
+    assert verify.check_origin("Scotland", "A Product of Scotland")["status"] == MATCH
+
+
+def test_origin_country_aliases_fold():
+    # the same country under a different name is not a conflict
+    assert verify.check_origin("USA", "Product of the United States")["status"] == MATCH
+    assert verify.check_origin("United States", "PRODUCT OF U.S.A.")["status"] == MATCH
+    assert verify.check_origin("UK", "Product of Great Britain")["status"] == MATCH
+
+
+def test_origin_wrong_country_is_mismatch():
+    assert verify.check_origin("France", "Product of Italy")["status"] == MISMATCH
+    assert verify.check_origin("USA", "Product of Mexico")["status"] == MISMATCH
+
+
+def test_origin_not_on_label_is_missing():
+    assert verify.check_origin("France", None)["status"] == MISSING
+
+
 # --- government warning -----------------------------------------------------------
 
 def test_warning_exact_text_passes():
@@ -361,6 +406,8 @@ def _extraction(**overrides):
         "class_type": "Kentucky Straight Bourbon Whiskey",
         "alcohol_content": "45% Alc./Vol. (90 Proof)",
         "net_contents": "750 mL",
+        "producer_name_address": "Distilled and Bottled by Old Tom Distillery Co., Bardstown, KY",
+        "country_of_origin": None,
         "government_warning": govwarning.FULL_TEXT,
         "warning_prefix_bold": True,
         "legibility": "good",
@@ -414,6 +461,45 @@ def test_fuzzy_field_demotes_to_review():
     result = verify.verify_label(
         APPLICATION, _extraction(class_type="Kentucky Strait Bourbon Whiskey"))
     assert result["overall"] == "review"
+
+
+def test_optional_fields_skipped_when_application_blank():
+    # A four-field application's verdict is unchanged by the optional checks:
+    # blank means "not part of this application", not "needs review".
+    result = verify.verify_label(APPLICATION, _extraction())
+    fields = [c["field"] for c in result["checks"]]
+    assert "producer_name_address" not in fields
+    assert "country_of_origin" not in fields
+    assert result["overall"] == "pass"
+
+
+def test_optional_fields_checked_when_stated():
+    application = {**APPLICATION,
+                   "producer_name_address":
+                       "Distilled and Bottled by Old Tom Distillery Co., Bardstown, KY",
+                   "country_of_origin": "France"}
+    extraction = _extraction(
+        producer_name_address="DISTILLED AND BOTTLED BY OLD TOM "
+                              "DISTILLERY CO., BARDSTOWN, KY",
+        country_of_origin="Product of France")
+    result = verify.verify_label(application, extraction)
+    by_field = {c["field"]: c["status"] for c in result["checks"]}
+    assert by_field["producer_name_address"] == MATCH
+    assert by_field["country_of_origin"] == MATCH
+    assert result["overall"] == "pass"
+
+
+def test_stated_origin_missing_from_label_is_review():
+    application = {**APPLICATION, "country_of_origin": "France"}
+    result = verify.verify_label(application, _extraction(country_of_origin=None))
+    assert result["overall"] == "review"
+
+
+def test_wrong_origin_fails():
+    application = {**APPLICATION, "country_of_origin": "France"}
+    result = verify.verify_label(
+        application, _extraction(country_of_origin="Product of Italy"))
+    assert result["overall"] == "fail"
 
 
 def test_poor_legibility_blocks_a_clean_pass():
