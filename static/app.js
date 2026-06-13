@@ -32,7 +32,7 @@ const OVERALL = {
   review: { tone: "warn", text: "Needs review",
             sub: "Nothing is plainly wrong, but at least one item needs a human look." },
   fail:   { tone: "bad",  text: "Problems found",
-            sub: "At least one field doesn't match the application." },
+            sub: "A field conflicts with the application, or something mandatory is missing." },
   error:  { tone: "bad",  text: "Couldn't check this label", sub: "" },
 };
 
