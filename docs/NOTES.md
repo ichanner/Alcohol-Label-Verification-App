@@ -273,10 +273,13 @@ eval before any model or prompt change ships.
 - ABV tolerance rules aren't modeled. TTB allows small tolerances for some
   commodities; this expects the form and label to state the same number,
   which is the conservative reading.
-- Name & address and country of origin are plain text comparisons with the
-  same review tier as the other fields ("USA" = "Product of the United
-  States", but "KY" vs "Kentucky" routes to review, not match). The deeper
-  TTB rules — trade-name allowances, sulfite declarations, type size
+- Country of origin resolves both sides against a vendored country-name
+  dataset (mledoze/countries, 817 aliases — "Holland" = "Netherlands",
+  "Burma" = "Myanmar"); a hard mismatch requires both sides to be recognized
+  as different countries, and anything unrecognized ("Scotland") routes to
+  review. Name & address is a plain text comparison with the same review
+  tier as the other fields ("KY" vs "Kentucky" is review, not match). The
+  deeper TTB rules — trade-name allowances, sulfite declarations, type size
   minimums — are out of scope; type size needs physical dimensions a photo
   doesn't give you.
 
@@ -286,5 +289,9 @@ eval before any model or prompt change ships.
    decides how much the tool can be trusted.
 2. Front + back label images per application.
 3. Per-commodity rule packs (wine/beer/spirits) on the same transcription.
+   The first two pieces are TTB's own published enums: the standards of fill
+   (27 CFR 5.203 — net contents that match the application but aren't an
+   authorized container size should still flag) and the COLA product
+   class/type code list for validating designations.
 4. A "disagree" button recording agent overrides, both for trust and as the
    seed of a bigger eval set.

@@ -113,10 +113,12 @@ labelcheck/          the app
   extract.py         the one Claude call — image in, verbatim fields out
   verify.py          field comparisons; all pass/fail logic lives here
   govwarning.py      the strict 27 CFR Part 16 warning-statement check
+  countries.py       generated country-name aliases (Holland = Netherlands)
 static/              the front end (plain HTML/CSS/JS, no build step)
 samples/             generated test labels + a batch CSV that uses them
 eval/                real-label eval: hand-labeled ground truth manifest
-scripts/             the label generator + the real-label eval runner
+scripts/             the label generator, the real-label eval runner, and
+                     the country-alias regenerator
 tests/               unit tests for the comparison logic
 ```
 

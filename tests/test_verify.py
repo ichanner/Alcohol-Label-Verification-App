@@ -305,10 +305,21 @@ def test_origin_boilerplate_folds_to_match():
 
 
 def test_origin_country_aliases_fold():
-    # the same country under a different name is not a conflict
+    # the same country under a different name is not a conflict — resolved
+    # against the vendored country-name dataset (labelcheck/countries.py)
     assert verify.check_origin("USA", "Product of the United States")["status"] == MATCH
     assert verify.check_origin("United States", "PRODUCT OF U.S.A.")["status"] == MATCH
     assert verify.check_origin("UK", "Product of Great Britain")["status"] == MATCH
+    assert verify.check_origin("Netherlands", "Product of Holland")["status"] == MATCH
+    assert verify.check_origin("Myanmar", "Product of Burma")["status"] == MATCH
+    assert verify.check_origin("Czech Republic", "Product of Czechia")["status"] == MATCH
+
+
+def test_origin_unrecognized_name_is_review_not_fail():
+    # "Scotland" isn't a country in the dataset (it's a UK constituent) — a
+    # hard mismatch needs both sides recognized; otherwise it's a human call.
+    r = verify.check_origin("United Kingdom", "Product of Scotland")
+    assert r["status"] == REVIEW
 
 
 def test_origin_wrong_country_is_mismatch():
